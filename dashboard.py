@@ -407,7 +407,27 @@ def _bt_antioverfitting_view(display_df: pd.DataFrame, spy_ret: float) -> None: 
 
 # ── Main app ───────────────────────────────────────────────────────────────────
 
+def _check_password():
+    if st.session_state.get("authenticated"):
+        return
+    st.title("🔐 AI 半导体研究系统")
+    st.markdown("请输入访问密码以继续使用")
+    pwd = st.text_input("密码", type="password", key="_pwd_input")
+    if st.button("确认", type="primary"):
+        try:
+            correct = st.secrets["WYF19785"]
+        except Exception:
+            correct = ""
+        if pwd == correct and correct:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("❌ 密码错误，拒绝访问")
+    st.stop()
+
+
 def main():
+    _check_password()
     wl = load_watchlist()
     all_tickers  = wl["ticker"].tolist()
     etf_tickers  = set(wl[wl["sector"] == _ETF_SECTOR]["ticker"].tolist())
