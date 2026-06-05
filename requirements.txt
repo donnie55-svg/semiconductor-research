@@ -5,4 +5,3 @@ numpy>=1.24.0
 plotly>=5.17.0
 feedparser>=6.0.10
 requests>=2.31.0
-pandas-ta>=0.3.14b
