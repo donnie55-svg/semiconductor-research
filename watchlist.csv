@@ -1,0 +1,46 @@
+ticker,name,sector,priority
+NVDA,NVIDIA,AI算力/GPU/芯片,high
+AMD,AMD,AI算力/GPU/芯片,high
+AVGO,Broadcom,AI算力/GPU/芯片,high
+INTC,Intel,AI算力/GPU/芯片,high
+QCOM,Qualcomm,AI算力/GPU/芯片,high
+MU,Micron,AI算力/GPU/芯片,high
+TSM,TSMC,AI算力/GPU/芯片,high
+AMAT,Applied Materials,AI算力/GPU/芯片,high
+LRCX,Lam Research,AI算力/GPU/芯片,high
+KLAC,KLA Corp,AI算力/GPU/芯片,high
+ASML,ASML,AI算力/GPU/芯片,high
+ADI,Analog Devices,AI算力/GPU/芯片,high
+MRVL,Marvell Tech,AI算力/GPU/芯片,high
+TXN,Texas Instruments,AI算力/GPU/芯片,high
+AAL,American Airlines,空运&旅游,high
+DAL,Delta Air Lines,空运&旅游,high
+UAL,United Airlines,空运&旅游,high
+LUV,Southwest Airlines,空运&旅游,high
+ALK,Alaska Airlines,空运&旅游,high
+CCL,Carnival Corp,空运&旅游,high
+RCL,Royal Caribbean,空运&旅游,high
+NCLH,Norwegian Cruise,空运&旅游,high
+ABNB,Airbnb,空运&旅游,high
+BKNG,Booking Holdings,空运&旅游,high
+DIS,Disney,空运&旅游,high
+LVS,Las Vegas Sands,空运&旅游,high
+WYNN,Wynn Resorts,空运&旅游,high
+MGM,MGM Resorts,空运&旅游,high
+BABA,阿里巴巴,中概股ADR,high
+PDD,拼多多,中概股ADR,high
+JD,京东,中概股ADR,high
+BIDU,百度,中概股ADR,high
+NIO,蔚来,中概股ADR,high
+XPEV,小鹏汽车,中概股ADR,high
+LI,理想汽车,中概股ADR,high
+TCOM,携程,中概股ADR,high
+FUTU,富途控股,中概股ADR,high
+SMH,VanEck Semiconductor ETF,ETF/指数,medium
+SOXX,iShares Semiconductor ETF,ETF/指数,medium
+XSD,SPDR Semiconductor ETF,ETF/指数,medium
+DRAM,DRAM ETF,ETF/指数,medium
+SPY,S&P 500 ETF,ETF/指数,medium
+QQQ,Nasdaq 100 ETF,ETF/指数,medium
+NASA,Procure Space ETF,ETF/指数,medium
+EWT,iShares MSCI Taiwan ETF,ETF/指数,medium
