@@ -415,7 +415,7 @@ def _check_password():
     pwd = st.text_input("密码", type="password", key="_pwd_input")
     if st.button("确认", type="primary"):
         try:
-            correct = st.secrets["WYF19785"]
+            correct = st.secrets["WYF197858"]
         except Exception:
             correct = ""
         if pwd == correct and correct:
