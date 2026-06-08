@@ -38,7 +38,7 @@ from modules.high_conviction import (
 )
 
 st.set_page_config(
-    page_title="AI 半导体研究系统",
+    page_title="投资研究系统",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -150,7 +150,11 @@ def load_watchlist() -> pd.DataFrame:
                          "BABA", "PDD", "JD", "BIDU", "NIO", "XPEV", "LI", "TCOM", "FUTU",
                          "SMH", "SOXX", "XSD", "DRAM", "SPY", "QQQ", "NASA", "EWT",
                          "WMT", "AMZN", "COST", "TGT", "HD", "LOW",
-                         "NKE", "MCD", "SBUX", "KO", "PEP", "PG", "LULU", "TJX", "EBAY"],
+                         "NKE", "MCD", "SBUX", "KO", "PEP", "PG", "LULU", "TJX", "EBAY",
+                         "CEG", "VST", "NNE", "SMR", "OKLO",
+                         "ISRG", "ABB", "ACHR",
+                         "APLD", "CRWV", "IREN", "VRT", "SMCI",
+                         "JNJ", "V", "MA", "PFE"],
             "name":     ["NVIDIA", "AMD", "Broadcom", "Micron", "TSMC",
                          "Applied Materials", "Lam Research", "KLA Corp",
                          "ASML", "Analog Devices", "Marvell Tech", "Texas Instruments",
@@ -168,13 +172,24 @@ def load_watchlist() -> pd.DataFrame:
                          "Procure Space ETF", "iShares MSCI Taiwan ETF",
                          "沃尔玛", "亚马逊", "好市多 Costco", "塔吉特 Target",
                          "Home Depot", "Lowe's", "耐克 Nike", "麦当劳", "星巴克",
-                         "可口可乐", "百事可乐", "宝洁 P&G", "Lululemon", "TJ Maxx", "eBay"],
+                         "可口可乐", "百事可乐", "宝洁 P&G", "Lululemon", "TJ Maxx", "eBay",
+                         "Constellation Energy", "Vistra Energy", "Nano Nuclear Energy",
+                         "NuScale Power", "Oklo Inc",
+                         "Intuitive Surgical", "ABB Ltd", "Archer Aviation",
+                         "Applied Digital", "CoreWeave", "IREN Limited",
+                         "Vertiv Holdings", "Super Micro Computer",
+                         "Johnson & Johnson", "Visa", "Mastercard", "Pfizer"],
             "sector":   [_DEFAULT_SECTOR] * 14 +
                         ["空运&旅游"] * 14 +
                         ["中概股ADR"] * 9 +
                         [_ETF_SECTOR] * 8 +
-                        ["消费零售"] * 15,
-            "priority": ["high"] * 37 + ["medium"] * 8 + ["medium"] * 15,
+                        ["消费零售"] * 15 +
+                        ["能源/核能"] * 5 +
+                        ["机器人/自动化"] * 3 +
+                        ["AI基础设施"] * 5 +
+                        ["防御对冲"] * 4,
+            "priority": ["high"] * 37 + ["medium"] * 8 + ["medium"] * 15 +
+                        ["medium"] * 5 + ["medium"] * 3 + ["medium"] * 5 + ["medium"] * 4,
         })
     # 兼容旧格式：补充缺失的 sector 列
     if "sector" not in df.columns:
@@ -416,7 +431,7 @@ def _bt_antioverfitting_view(display_df: pd.DataFrame, spy_ret: float) -> None: 
 def _check_password():
     if st.session_state.get("authenticated"):
         return
-    st.title("🔐 AI 半导体研究系统")
+    st.title("🔐 投资研究系统")
     st.markdown("请输入访问密码以继续使用")
     pwd = st.text_input("密码", type="password", key="_pwd_input")
     if st.button("确认", type="primary"):
@@ -444,7 +459,7 @@ def main():
 
     # ── Sidebar ──────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.markdown("## 🔬 AI 半导体研究")
+        st.markdown("## 🔬 投资研究")
         st.caption(f"更新: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
         st.divider()
 
@@ -496,7 +511,7 @@ def main():
     stock_tickers = [t for t in selected if t not in etf_tickers and not t.startswith("^")]
 
     sector_label = selected_sector if selected_sector != "全部" else "全部板块"
-    st.title("🔬 AI 半导体股票研究系统")
+    st.title("🔬 投资研究系统")
     st.caption(f"当前板块: {sector_label}（{len(selected)} 只）  ·  数据来源: 富途牛牛实时 ✅")
 
     # ── 严选模式横幅 ──────────────────────────────────────────────────────────
