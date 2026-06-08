@@ -194,6 +194,54 @@ def load_watchlist() -> pd.DataFrame:
     # 兼容旧格式：补充缺失的 sector 列
     if "sector" not in df.columns:
         df["sector"] = _DEFAULT_SECTOR
+
+    # 自动追加缺失板块股票
+    _EXTRA = [
+        ("WMT",  "沃尔玛",               "消费零售", "medium"),
+        ("AMZN", "亚马逊",               "消费零售", "medium"),
+        ("COST", "好市多 Costco",         "消费零售", "medium"),
+        ("TGT",  "塔吉特 Target",         "消费零售", "medium"),
+        ("HD",   "Home Depot",           "消费零售", "medium"),
+        ("LOW",  "Lowe's",               "消费零售", "medium"),
+        ("NKE",  "耐克 Nike",             "消费零售", "medium"),
+        ("MCD",  "麦当劳",               "消费零售", "medium"),
+        ("SBUX", "星巴克",               "消费零售", "medium"),
+        ("KO",   "可口可乐",             "消费零售", "medium"),
+        ("PEP",  "百事可乐",             "消费零售", "medium"),
+        ("PG",   "宝洁 P&G",             "消费零售", "medium"),
+        ("LULU", "Lululemon",            "消费零售", "medium"),
+        ("TJX",  "TJ Maxx",             "消费零售", "medium"),
+        ("EBAY", "eBay",                "消费零售", "medium"),
+        ("CEG",  "Constellation Energy","能源/核能", "medium"),
+        ("VST",  "Vistra Energy",       "能源/核能", "medium"),
+        ("NNE",  "Nano Nuclear Energy", "能源/核能", "medium"),
+        ("SMR",  "NuScale Power",       "能源/核能", "medium"),
+        ("OKLO", "Oklo Inc",            "能源/核能", "medium"),
+        ("ISRG", "Intuitive Surgical",  "机器人/自动化", "medium"),
+        ("ABB",  "ABB Ltd",             "机器人/自动化", "medium"),
+        ("ACHR", "Archer Aviation",     "机器人/自动化", "medium"),
+        ("APLD", "Applied Digital",     "AI基础设施", "medium"),
+        ("CRWV", "CoreWeave",           "AI基础设施", "medium"),
+        ("IREN", "IREN Limited",        "AI基础设施", "medium"),
+        ("VRT",  "Vertiv Holdings",     "AI基础设施", "medium"),
+        ("SMCI", "Super Micro Computer","AI基础设施", "medium"),
+        ("JNJ",  "Johnson & Johnson",   "防御对冲", "medium"),
+        ("V",    "Visa",                "防御对冲", "medium"),
+        ("MA",   "Mastercard",          "防御对冲", "medium"),
+        ("PFE",  "Pfizer",              "防御对冲", "medium"),
+    ]
+    existing = set(df["ticker"].values)
+    new_rows = [
+        {"ticker": t, "name": n, "sector": s, "priority": p}
+        for t, n, s, p in _EXTRA if t not in existing
+    ]
+    if new_rows:
+        df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
+        try:
+            df.to_csv("watchlist.csv", index=False, encoding="utf-8")
+        except Exception:
+            pass
+
     return df
 
 
