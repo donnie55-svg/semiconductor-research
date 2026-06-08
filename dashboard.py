@@ -229,6 +229,14 @@ def load_watchlist() -> pd.DataFrame:
         ("V",    "Visa",                "防御对冲", "medium"),
         ("MA",   "Mastercard",          "防御对冲", "medium"),
         ("PFE",  "Pfizer",              "防御对冲", "medium"),
+        ("LLY",  "礼来 Eli Lilly",      "医药/生物科技", "medium"),
+        ("NVO",  "诺和诺德 Novo Nordisk","医药/生物科技", "medium"),
+        ("MRK",  "默克 Merck",          "医药/生物科技", "medium"),
+        ("ABBV", "艾伯维 AbbVie",       "医药/生物科技", "medium"),
+        ("AMGN", "安进 Amgen",          "医药/生物科技", "medium"),
+        ("GILD", "吉利德 Gilead",       "医药/生物科技", "medium"),
+        ("MRNA", "Moderna",             "医药/生物科技", "medium"),
+        ("RXRX", "Recursion AI制药",    "医药/生物科技", "medium"),
     ]
     existing = set(df["ticker"].values)
     new_rows = [
@@ -633,6 +641,48 @@ def main():
     # ════════════════════════════════════════════════════════════════════════════
     with tab1:
         st.header(f"每日市场概览 · {sector_label}")
+
+        # ── 全市场板块快速概览 ────────────────────────────────────────────────
+        _SECTOR_REPS = [
+            ("AI算力/GPU/芯片",  ["NVDA", "AMD", "MU"]),
+            ("消费零售",         ["WMT", "AMZN", "COST"]),
+            ("空运&旅游",        ["DAL", "ABNB", "BKNG"]),
+            ("中概股ADR",        ["BABA", "PDD", "BIDU"]),
+            ("能源/核能",        ["CEG", "VST", "NNE"]),
+            ("机器人/自动化",    ["ISRG", "ABB", "ACHR"]),
+            ("AI基础设施",       ["APLD", "CRWV", "VRT"]),
+            ("防御对冲",         ["JNJ", "V", "MA"]),
+            ("医药/生物科技",    ["LLY", "NVO", "MRK"]),
+            ("ETF/指数",         ["SPY", "QQQ", "SMH"]),
+        ]
+        _all_rep = tuple(t for _, tks in _SECTOR_REPS for t in tks)
+        with st.expander("📊 全市场板块快速概览", expanded=True):
+            with st.spinner("加载代表股行情..."):
+                _rep_df = c_daily(_all_rep)
+            if not _rep_df.empty:
+                _rmap = {r["Ticker"]: r for _, r in _rep_df.iterrows()}
+                for _sname, _tks in _SECTOR_REPS:
+                    _gc = st.columns([2, 1, 1, 1])
+                    _gc[0].markdown(
+                        f"<div style='padding:4px 0;color:#aaa;font-size:0.88rem;"
+                        f"font-weight:600'>{_sname}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    for _ci, _tk in enumerate(_tks):
+                        _rr  = _rmap.get(_tk, {})
+                        _pp  = _rr.get("Price")
+                        _cc  = _rr.get("Change%")
+                        _cc_col = "#00CC96" if (_cc or 0) >= 0 else "#EF553B"
+                        _gc[_ci + 1].markdown(
+                            f"<div style='text-align:center;padding:2px 0'>"
+                            f"<div style='font-weight:600;font-size:0.85rem;color:#fff'>{_tk}</div>"
+                            f"<div style='font-size:0.82rem;color:#ccc'>"
+                            f"{'${:.2f}'.format(_pp) if _pp else 'N/A'}</div>"
+                            f"<div style='font-size:0.78rem;color:{_cc_col}'>"
+                            f"{'{:+.2f}%'.format(_cc) if _cc is not None else ''}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
 
         with st.spinner("加载行情数据..."):
             daily_df = c_daily(tuple(selected))
