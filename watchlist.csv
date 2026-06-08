@@ -44,3 +44,47 @@ SPY,S&P 500 ETF,ETF/指数,medium
 QQQ,Nasdaq 100 ETF,ETF/指数,medium
 NASA,Procure Space ETF,ETF/指数,medium
 EWT,iShares MSCI Taiwan ETF,ETF/指数,medium
+WMT,沃尔玛,消费零售,medium
+AMZN,亚马逊,消费零售,medium
+COST,好市多 Costco,消费零售,medium
+TGT,塔吉特 Target,消费零售,medium
+HD,Home Depot,消费零售,medium
+LOW,Lowe's,消费零售,medium
+NKE,耐克 Nike,消费零售,medium
+MCD,麦当劳,消费零售,medium
+SBUX,星巴克,消费零售,medium
+KO,可口可乐,消费零售,medium
+PEP,百事可乐,消费零售,medium
+PG,宝洁 P&G,消费零售,medium
+LULU,Lululemon,消费零售,medium
+TJX,TJ Maxx,消费零售,medium
+EBAY,eBay,消费零售,medium
+CEG,Constellation Energy,能源/核能,medium
+VST,Vistra Energy,能源/核能,medium
+NNE,Nano Nuclear Energy,能源/核能,medium
+SMR,NuScale Power,能源/核能,medium
+OKLO,Oklo Inc,能源/核能,medium
+ISRG,Intuitive Surgical,机器人/自动化,medium
+ABB,ABB Ltd,机器人/自动化,medium
+ACHR,Archer Aviation,机器人/自动化,medium
+APLD,Applied Digital,AI基础设施,medium
+CRWV,CoreWeave,AI基础设施,medium
+IREN,IREN Limited,AI基础设施,medium
+VRT,Vertiv Holdings,AI基础设施,medium
+SMCI,Super Micro Computer,AI基础设施,medium
+JNJ,Johnson & Johnson,防御对冲,medium
+V,Visa,防御对冲,medium
+MA,Mastercard,防御对冲,medium
+PFE,Pfizer,防御对冲,medium
+LLY,礼来 Eli Lilly,医药/生物科技,medium
+NVO,诺和诺德 Novo Nordisk,医药/生物科技,medium
+MRK,默克 Merck,医药/生物科技,medium
+ABBV,艾伯维 AbbVie,医药/生物科技,medium
+AMGN,安进 Amgen,医药/生物科技,medium
+GILD,吉利德 Gilead,医药/生物科技,medium
+MRNA,Moderna,医药/生物科技,medium
+RXRX,Recursion AI制药,医药/生物科技,medium
+NOW,ServiceNow,AI云/软件,medium
+ZS,Zscaler,AI云/软件,medium
+PANW,Palo Alto Networks,AI云/软件,medium
+WDAY,Workday,AI云/软件,medium
