@@ -2285,12 +2285,12 @@ def main():
                 else [_hc_sel_ticker]
             )
             _hc_sector_pool = (
-                list(RADAR_TICKERS_BY_SECTOR.get(_hc_sel_sector, {}).keys())
+                wl[wl["sector"] == _hc_sel_sector]["ticker"].tolist()
                 if _hc_sel_sector != "全部板块"
                 else ALL_RADAR_TICKERS
             )
             _hc_sector_tickers = (
-                RADAR_TICKERS_BY_SECTOR.get(_hc_sel_sector, [])
+                wl[wl["sector"] == _hc_sel_sector]["ticker"].tolist()
                 if _hc_sel_sector != "全部板块"
                 else ALL_RADAR_TICKERS
             )
