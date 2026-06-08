@@ -642,47 +642,49 @@ def main():
     with tab1:
         st.header(f"每日市场概览 · {sector_label}")
 
-        # ── 全市场板块快速概览 ────────────────────────────────────────────────
-        _SECTOR_REPS = [
-            ("AI算力/GPU/芯片",  ["NVDA", "AMD", "MU"]),
-            ("消费零售",         ["WMT", "AMZN", "COST"]),
-            ("空运&旅游",        ["DAL", "ABNB", "BKNG"]),
-            ("中概股ADR",        ["BABA", "PDD", "BIDU"]),
-            ("能源/核能",        ["CEG", "VST", "NNE"]),
-            ("机器人/自动化",    ["ISRG", "ABB", "ACHR"]),
-            ("AI基础设施",       ["APLD", "CRWV", "VRT"]),
-            ("防御对冲",         ["JNJ", "V", "MA"]),
-            ("医药/生物科技",    ["LLY", "NVO", "MRK"]),
-            ("ETF/指数",         ["SPY", "QQQ", "SMH"]),
-        ]
-        _all_rep = tuple(t for _, tks in _SECTOR_REPS for t in tks)
-        with st.expander("📊 全市场板块快速概览", expanded=True):
+        # ── 全市场快速概览 ────────────────────────────────────────────────────
+        SECTOR_REPS = {
+            "AI算力/GPU":    ["NVDA", "AMD",  "AVGO"],
+            "半导体设备":    ["AMAT", "LRCX", "ASML"],
+            "AI基础设施":    ["VRT",  "SMCI", "APLD"],
+            "能源/核能":     ["CEG",  "VST",  "NNE"],
+            "消费零售":      ["WMT",  "AMZN", "COST"],
+            "医药/生物科技": ["LLY",  "NVO",  "MRK"],
+            "空运&旅游":     ["DAL",  "UAL",  "CCL"],
+            "防御对冲":      ["V",    "MA",   "JNJ"],
+            "中概股ADR":     ["BABA", "PDD",  "JD"],
+            "ETF/指数":      ["SPY",  "QQQ",  "SMH"],
+        }
+        _all_rep = tuple(dict.fromkeys(t for tks in SECTOR_REPS.values() for t in tks))
+        with st.expander("📊 全市场快速概览", expanded=True):
             with st.spinner("加载代表股行情..."):
                 _rep_df = c_daily(_all_rep)
             if not _rep_df.empty:
                 _rmap = {r["Ticker"]: r for _, r in _rep_df.iterrows()}
-                for _sname, _tks in _SECTOR_REPS:
-                    _gc = st.columns([2, 1, 1, 1])
-                    _gc[0].markdown(
-                        f"<div style='padding:4px 0;color:#aaa;font-size:0.88rem;"
-                        f"font-weight:600'>{_sname}</div>",
+                for _sname, _tks in SECTOR_REPS.items():
+                    _lc, _rc = st.columns([1, 3])
+                    _lc.markdown(
+                        f"<div style='padding:6px 0;color:#aaa;font-size:0.85rem;"
+                        f"font-weight:700'>{_sname}</div>",
                         unsafe_allow_html=True,
                     )
+                    _stock_cols = _rc.columns(3)
                     for _ci, _tk in enumerate(_tks):
-                        _rr  = _rmap.get(_tk, {})
-                        _pp  = _rr.get("Price")
-                        _cc  = _rr.get("Change%")
+                        _rr     = _rmap.get(_tk, {})
+                        _pp     = _rr.get("Price")
+                        _cc     = _rr.get("Change%")
                         _cc_col = "#00CC96" if (_cc or 0) >= 0 else "#EF553B"
-                        _gc[_ci + 1].markdown(
+                        _stock_cols[_ci].markdown(
                             f"<div style='text-align:center;padding:2px 0'>"
-                            f"<div style='font-weight:600;font-size:0.85rem;color:#fff'>{_tk}</div>"
-                            f"<div style='font-size:0.82rem;color:#ccc'>"
+                            f"<div style='font-weight:700;font-size:0.88rem;color:#fff'>{_tk}</div>"
+                            f"<div style='font-size:0.80rem;color:#ccc'>"
                             f"{'${:.2f}'.format(_pp) if _pp else 'N/A'}</div>"
-                            f"<div style='font-size:0.78rem;color:{_cc_col}'>"
-                            f"{'{:+.2f}%'.format(_cc) if _cc is not None else ''}</div>"
+                            f"<div style='font-size:0.78rem;font-weight:600;color:{_cc_col}'>"
+                            f"{'{:+.2f}%'.format(_cc) if _cc is not None else '—'}</div>"
                             f"</div>",
                             unsafe_allow_html=True,
                         )
+        st.divider()
 
         with st.spinner("加载行情数据..."):
             daily_df = c_daily(tuple(selected))
