@@ -148,7 +148,9 @@ def load_watchlist() -> pd.DataFrame:
                          "AAL", "DAL", "UAL", "LUV", "ALK", "CCL", "RCL", "NCLH",
                          "ABNB", "BKNG", "DIS", "LVS", "WYNN", "MGM",
                          "BABA", "PDD", "JD", "BIDU", "NIO", "XPEV", "LI", "TCOM", "FUTU",
-                         "SMH", "SOXX", "XSD", "DRAM", "SPY", "QQQ", "NASA", "EWT"],
+                         "SMH", "SOXX", "XSD", "DRAM", "SPY", "QQQ", "NASA", "EWT",
+                         "WMT", "AMZN", "COST", "TGT", "HD", "LOW",
+                         "NKE", "MCD", "SBUX", "KO", "PEP", "PG", "LULU", "TJX", "EBAY"],
             "name":     ["NVIDIA", "AMD", "Broadcom", "Micron", "TSMC",
                          "Applied Materials", "Lam Research", "KLA Corp",
                          "ASML", "Analog Devices", "Marvell Tech", "Texas Instruments",
@@ -163,12 +165,16 @@ def load_watchlist() -> pd.DataFrame:
                          "VanEck Semiconductor ETF", "iShares Semiconductor ETF",
                          "SPDR Semiconductor ETF", "DRAM ETF",
                          "S&P 500 ETF", "Nasdaq 100 ETF",
-                         "Procure Space ETF", "iShares MSCI Taiwan ETF"],
+                         "Procure Space ETF", "iShares MSCI Taiwan ETF",
+                         "沃尔玛", "亚马逊", "好市多 Costco", "塔吉特 Target",
+                         "Home Depot", "Lowe's", "耐克 Nike", "麦当劳", "星巴克",
+                         "可口可乐", "百事可乐", "宝洁 P&G", "Lululemon", "TJ Maxx", "eBay"],
             "sector":   [_DEFAULT_SECTOR] * 14 +
                         ["空运&旅游"] * 14 +
                         ["中概股ADR"] * 9 +
-                        [_ETF_SECTOR] * 8,
-            "priority": ["high"] * 37 + ["medium"] * 8,
+                        [_ETF_SECTOR] * 8 +
+                        ["消费零售"] * 15,
+            "priority": ["high"] * 37 + ["medium"] * 8 + ["medium"] * 15,
         })
     # 兼容旧格式：补充缺失的 sector 列
     if "sector" not in df.columns:
@@ -553,10 +559,10 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
         "📊 市场概览", "💰 估值分析", "🔗 供应链追踪", "📈 财报分析",
         "📰 新闻监控", "📡 财报雷达", "🎯 策略回测", "📻 实时雷达",
-        "🎯 历史验证",
+        "🎯 历史验证", "🔎 单股查询",
     ])
 
     # ════════════════════════════════════════════════════════════════════════════
@@ -2359,6 +2365,500 @@ def main():
 
 > A+ 布林带含义：盘中曾恐慌跌破下轨，收盘有承接反弹，但没有完全涨飞
                 """)
+
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # TAB 10  单股查询 + 巴菲特价值评分卡
+    # ════════════════════════════════════════════════════════════════════════════
+    with tab10:
+        import yfinance as yf
+
+        st.header("🔎 单股深度查询")
+        st.caption("输入任意美股代码，实时拉取行情、估值、财报、技术指标、巴菲特价值评分 — 数据源 yfinance")
+
+        # ── 输入区 ────────────────────────────────────────────────────────────
+        sq_col1, sq_col2, sq_col3 = st.columns([2, 1, 1])
+        with sq_col1:
+            sq_ticker_raw = st.text_input(
+                "股票代码",
+                placeholder="例：KULR / WMT / AAPL / 2330.TW",
+                key="sq_ticker",
+            ).strip().upper()
+        with sq_col2:
+            sq_period = st.selectbox(
+                "历史区间", ["1mo", "3mo", "6mo", "1y", "2y"], index=3, key="sq_period"
+            )
+        with sq_col3:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            sq_run = st.button("🔍 查询", type="primary", use_container_width=True, key="sq_run")
+
+        # 快捷按钮
+        st.caption("快捷选择：")
+        sq_shortcuts = ["KULR","WMT","AMZN","COST","KO","NKE","NVDA","MU","AAPL","GOOGL","BRK-B","JNJ"]
+        sq_btn_cols  = st.columns(len(sq_shortcuts))
+        for _i, _tk in enumerate(sq_shortcuts):
+            with sq_btn_cols[_i]:
+                if st.button(_tk, key=f"sq_short_{_tk}", use_container_width=True):
+                    st.session_state["sq_ticker"]      = _tk
+                    st.session_state["sq_run_trigger"] = _tk
+                    st.rerun()
+
+        _sq_trigger = st.session_state.pop("sq_run_trigger", None)
+        if _sq_trigger:
+            sq_ticker_raw = _sq_trigger
+            sq_run = True
+
+        # ── 巴菲特评分函数 ────────────────────────────────────────────────────
+        def calc_buffett_score(info: dict, hist_earnings: list) -> dict:
+            items = []
+            total = 0
+
+            # 1. 护城河：毛利率 > 40%（权重15）
+            gm = (info.get("grossMargins") or 0) * 100
+            if gm >= 50:
+                pts, icon, note = 15, "✅", f"毛利率 {gm:.1f}% ≥ 50%，定价权强"
+            elif gm >= 40:
+                pts, icon, note = 10, "✅", f"毛利率 {gm:.1f}% ≥ 40%，护城河合格"
+            elif gm >= 25:
+                pts, icon, note = 5,  "⚠️", f"毛利率 {gm:.1f}%，偏低，护城河一般"
+            else:
+                pts, icon, note = 0,  "❌", f"毛利率 {gm:.1f}%，无明显定价权"
+            items.append(("🏰 护城河（毛利率）", pts, 15, icon, note))
+            total += pts
+
+            # 2. 盈利能力：ROE > 15%（权重15）
+            roe = (info.get("returnOnEquity") or 0) * 100
+            if roe >= 25:
+                pts, icon, note = 15, "✅", f"ROE {roe:.1f}% ≥ 25%，盈利能力优秀"
+            elif roe >= 15:
+                pts, icon, note = 10, "✅", f"ROE {roe:.1f}% ≥ 15%，盈利能力良好"
+            elif roe >= 8:
+                pts, icon, note = 5,  "⚠️", f"ROE {roe:.1f}%，盈利能力一般"
+            else:
+                pts, icon, note = 0,  "❌", f"ROE {roe:.1f}%，资本回报率低"
+            items.append(("💰 盈利能力（ROE）", pts, 15, icon, note))
+            total += pts
+
+            # 3. 现金转化：自由现金流 / 净利润 > 80%（权重15）
+            fcf     = info.get("freeCashflow") or 0
+            net_inc = info.get("netIncomeToCommon") or 0
+            if net_inc > 0 and fcf > 0:
+                fcf_ratio = fcf / net_inc * 100
+                if fcf_ratio >= 90:
+                    pts, icon, note = 15, "✅", f"FCF/净利润 {fcf_ratio:.0f}%，现金质量极高"
+                elif fcf_ratio >= 70:
+                    pts, icon, note = 10, "✅", f"FCF/净利润 {fcf_ratio:.0f}%，现金质量良好"
+                elif fcf_ratio >= 50:
+                    pts, icon, note = 5,  "⚠️", f"FCF/净利润 {fcf_ratio:.0f}%，现金转化一般"
+                else:
+                    pts, icon, note = 0,  "❌", f"FCF/净利润 {fcf_ratio:.0f}%，利润含金量低"
+            elif fcf > 0:
+                pts, icon, note = 8, "⚠️", "有正向自由现金流，但净利润数据缺失"
+            else:
+                pts, icon, note = 0, "❌", "自由现金流为负，烧钱阶段"
+            items.append(("💵 现金转化（FCF质量）", pts, 15, icon, note))
+            total += pts
+
+            # 4. 负债控制：D/E < 0.5（权重15）
+            de = info.get("debtToEquity") or 0
+            de_ratio = de / 100  # yfinance 返回的是百分比形式
+            if de_ratio <= 0.3:
+                pts, icon, note = 15, "✅", f"D/E {de_ratio:.2f}，几乎无杠杆，财务稳健"
+            elif de_ratio <= 0.7:
+                pts, icon, note = 10, "✅", f"D/E {de_ratio:.2f}，负债合理"
+            elif de_ratio <= 1.5:
+                pts, icon, note = 5,  "⚠️", f"D/E {de_ratio:.2f}，负债偏高"
+            else:
+                pts, icon, note = 0,  "❌", f"D/E {de_ratio:.2f}，高杠杆，风险较大"
+            items.append(("🛡️ 负债控制（D/E）", pts, 15, icon, note))
+            total += pts
+
+            # 5. 增长可持续：EPS增速 > 8%（权重15）
+            eps_g = (info.get("earningsGrowth") or 0) * 100
+            rev_g = (info.get("revenueGrowth")  or 0) * 100
+            if eps_g >= 15 and rev_g >= 10:
+                pts, icon, note = 15, "✅", f"EPS增速 {eps_g:.1f}% + 营收增速 {rev_g:.1f}%，双轮驱动"
+            elif eps_g >= 8:
+                pts, icon, note = 10, "✅", f"EPS增速 {eps_g:.1f}%，增长稳健"
+            elif eps_g >= 0:
+                pts, icon, note = 5,  "⚠️", f"EPS增速 {eps_g:.1f}%，增长较慢"
+            else:
+                pts, icon, note = 0,  "❌", f"EPS增速 {eps_g:.1f}%，盈利在下滑"
+            items.append(("📈 增长可持续（EPS增速）", pts, 15, icon, note))
+            total += pts
+
+            # 6. 估值合理：Forward PE（权重15）
+            fpe = info.get("forwardPE") or 0
+            sector = info.get("sector", "")
+            pe_bench = 20 if "Technology" in sector else (18 if "Consumer" in sector else 16)
+            if 0 < fpe <= pe_bench * 0.8:
+                pts, icon, note = 15, "✅", f"Forward PE {fpe:.1f}x，明显低于同类基准 {pe_bench}x，有安全边际"
+            elif 0 < fpe <= pe_bench * 1.2:
+                pts, icon, note = 10, "✅", f"Forward PE {fpe:.1f}x，估值合理"
+            elif 0 < fpe <= pe_bench * 1.8:
+                pts, icon, note = 5,  "⚠️", f"Forward PE {fpe:.1f}x，估值偏贵"
+            elif fpe > pe_bench * 1.8:
+                pts, icon, note = 0,  "❌", f"Forward PE {fpe:.1f}x，估值过高，安全边际不足"
+            else:
+                pts, icon, note = 5,  "⚠️", "Forward PE 数据缺失，无法判断估值"
+            items.append(("🎯 估值合理（Forward PE）", pts, 15, icon, note))
+            total += pts
+
+            # 7. 股东友好：回购 + 股息（权重10）
+            div_yield = (info.get("dividendYield") or 0) * 100
+            payout    = (info.get("payoutRatio")   or 0) * 100
+            if div_yield >= 1.5 and payout <= 60:
+                pts, icon, note = 10, "✅", f"股息率 {div_yield:.1f}%，派息比例 {payout:.0f}%，股东友好"
+            elif div_yield >= 0.5:
+                pts, icon, note = 7,  "✅", f"股息率 {div_yield:.1f}%，有分红"
+            else:
+                pts, icon, note = 4,  "⚠️", "无股息，需确认是否有持续回购计划"
+            items.append(("🎁 股东回报（股息/回购）", pts, 10, icon, note))
+            total += pts
+
+            if total >= 85:   grade, color = "A+  巴菲特最爱", "#00CC96"
+            elif total >= 70: grade, color = "A   高质量标的", "#82C8FF"
+            elif total >= 55: grade, color = "B   中等质量",   "#FFA500"
+            elif total >= 40: grade, color = "C   质量偏弱",   "#FF8C00"
+            else:             grade, color = "D   不符合标准", "#EF553B"
+
+            return {"score": total, "grade": grade, "color": color, "items": items}
+
+        # ── 执行查询 ──────────────────────────────────────────────────────────
+        if sq_run and sq_ticker_raw:
+            sq_ticker = sq_ticker_raw
+            st.session_state["sq_last_ticker"] = sq_ticker
+            st.session_state["sq_last_period"]  = sq_period
+
+            with st.spinner(f"正在拉取 {sq_ticker} 数据..."):
+                try:
+                    tkobj   = yf.Ticker(sq_ticker)
+                    sq_info = tkobj.info or {}
+                    sq_hist = tkobj.history(period=sq_period, auto_adjust=True)
+                    sq_fins = tkobj.earnings_history if hasattr(tkobj, "earnings_history") else []
+                except Exception as _e:
+                    st.error(f"数据拉取失败：{_e}")
+                    sq_info = {}
+                    sq_hist = pd.DataFrame()
+                    sq_fins = []
+
+            if not sq_info and sq_hist.empty:
+                st.warning(f"未找到 {sq_ticker} 的数据，请检查代码是否正确")
+            else:
+                # ── 基本信息横幅 ──────────────────────────────────────────────
+                _sq_name    = sq_info.get("longName") or sq_info.get("shortName") or sq_ticker
+                _sq_sector  = sq_info.get("sector", "N/A")
+                _sq_indust  = sq_info.get("industry", "N/A")
+                _sq_country = sq_info.get("country", "N/A")
+                _sq_website = sq_info.get("website", "")
+                _sq_price   = sq_info.get("currentPrice") or sq_info.get("regularMarketPrice")
+                _sq_prev    = sq_info.get("previousClose")
+                _sq_chg_pct = ((_sq_price - _sq_prev) / _sq_prev * 100) if (_sq_price and _sq_prev) else None
+                _chg_color  = "#00CC96" if (_sq_chg_pct or 0) >= 0 else "#EF553B"
+                _chg_str    = f"{_sq_chg_pct:+.2f}%" if _sq_chg_pct is not None else "N/A"
+                _price_disp = f"${_sq_price:.2f}" if _sq_price else "N/A"
+
+                st.markdown(
+                    f"<div style='background:#12122a;border:1px solid #4a9eff;"
+                    f"border-radius:10px;padding:14px 20px;margin-bottom:16px'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'>"
+                    f"<div>"
+                    f"<span style='font-size:1.6rem;font-weight:700;color:#fff'>{sq_ticker}</span>"
+                    f"<span style='color:#aaa;font-size:1rem;margin-left:12px'>{_sq_name}</span>"
+                    f"</div>"
+                    f"<div style='text-align:right'>"
+                    f"<span style='font-size:1.8rem;font-weight:700;color:#fff'>{_price_disp}</span>"
+                    f"<span style='font-size:1.1rem;color:{_chg_color};margin-left:8px'>{_chg_str}</span>"
+                    f"</div></div>"
+                    f"<div style='color:#888;font-size:0.85rem;margin-top:6px'>"
+                    f"{_sq_sector} · {_sq_indust} · {_sq_country}"
+                    + (f" · <a href='{_sq_website}' target='_blank' style='color:#4a9eff'>{_sq_website}</a>" if _sq_website else "")
+                    + "</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+                # ── 核心指标卡片（两行）──────────────────────────────────────
+                st.subheader("📊 核心指标")
+                _mkt_cap = sq_info.get("marketCap")
+                _mkt_cap_str = (
+                    f"${_mkt_cap/1e12:.2f}T" if _mkt_cap and _mkt_cap >= 1e12
+                    else (f"${_mkt_cap/1e9:.2f}B" if _mkt_cap and _mkt_cap >= 1e9
+                          else (f"${_mkt_cap/1e6:.0f}M" if _mkt_cap else "N/A"))
+                )
+                _r1 = st.columns(6)
+                for _ci, (_lbl, _val) in enumerate({
+                    "市值":        _mkt_cap_str,
+                    "Trailing PE": f"{sq_info['trailingPE']:.1f}"  if sq_info.get("trailingPE") else "N/A",
+                    "Forward PE":  f"{sq_info['forwardPE']:.1f}"   if sq_info.get("forwardPE")  else "N/A",
+                    "PEG":         f"{sq_info['pegRatio']:.2f}"    if sq_info.get("pegRatio")   else "N/A",
+                    "P/S":         f"{sq_info['priceToSalesTrailing12Months']:.2f}" if sq_info.get("priceToSalesTrailing12Months") else "N/A",
+                    "P/B":         f"{sq_info['priceToBook']:.2f}" if sq_info.get("priceToBook") else "N/A",
+                }.items()):
+                    _r1[_ci].metric(_lbl, _val)
+
+                _r2 = st.columns(6)
+                for _ci, (_lbl, _val) in enumerate({
+                    "52W最高":      f"${sq_info['fiftyTwoWeekHigh']:.2f}"     if sq_info.get("fiftyTwoWeekHigh") else "N/A",
+                    "52W最低":      f"${sq_info['fiftyTwoWeekLow']:.2f}"      if sq_info.get("fiftyTwoWeekLow")  else "N/A",
+                    "50日均线":     f"${sq_info['fiftyDayAverage']:.2f}"      if sq_info.get("fiftyDayAverage")  else "N/A",
+                    "200日均线":    f"${sq_info['twoHundredDayAverage']:.2f}" if sq_info.get("twoHundredDayAverage") else "N/A",
+                    "分析师目标价": f"${sq_info['targetMeanPrice']:.2f}"      if sq_info.get("targetMeanPrice")  else "N/A",
+                    "上行空间":     f"{(sq_info['targetMeanPrice']/_sq_price-1)*100:+.1f}%" if (sq_info.get("targetMeanPrice") and _sq_price) else "N/A",
+                }.items()):
+                    _r2[_ci].metric(_lbl, _val)
+
+                st.divider()
+
+                # ════════════════════════════════════════════════════════════
+                # 🏆 巴菲特价值评分卡
+                # ════════════════════════════════════════════════════════════
+                st.subheader("🏆 巴菲特价值评分")
+
+                _bf = calc_buffett_score(sq_info, sq_fins)
+                _score = _bf["score"]
+                _grade = _bf["grade"]
+                _color = _bf["color"]
+                _bar_w = int(_score)
+
+                st.markdown(
+                    f"<div style='background:#0d0d1a;border:2px solid {_color};"
+                    f"border-radius:12px;padding:20px 24px;margin-bottom:16px'>"
+                    f"<div style='display:flex;align-items:center;gap:24px;flex-wrap:wrap'>"
+                    f"<div style='text-align:center;min-width:100px'>"
+                    f"<div style='font-size:3.5rem;font-weight:900;color:{_color};line-height:1'>{_score}</div>"
+                    f"<div style='color:#888;font-size:0.8rem;margin-top:2px'>满分100</div>"
+                    f"</div>"
+                    f"<div style='flex:1'>"
+                    f"<div style='font-size:1.3rem;font-weight:700;color:{_color};margin-bottom:8px'>{_grade}</div>"
+                    f"<div style='background:#1e1e2e;border-radius:6px;height:12px;overflow:hidden'>"
+                    f"<div style='background:{_color};width:{_bar_w}%;height:100%;border-radius:6px;"
+                    f"transition:width 0.5s'></div></div>"
+                    f"<div style='display:flex;justify-content:space-between;color:#555;font-size:0.7rem;margin-top:3px'>"
+                    f"<span>0</span><span>40</span><span>55</span><span>70</span><span>85</span><span>100</span>"
+                    f"</div>"
+                    f"</div></div></div>",
+                    unsafe_allow_html=True,
+                )
+
+                _bf_cols = st.columns(2)
+                for _idx, (_dim, _pts, _max, _icon, _note) in enumerate(_bf["items"]):
+                    with _bf_cols[_idx % 2]:
+                        _item_color = "#00CC96" if _icon == "✅" else ("#FFA500" if _icon == "⚠️" else "#EF553B")
+                        _fill_pct   = int(_pts / _max * 100)
+                        st.markdown(
+                            f"<div style='background:#12122a;border:1px solid #2a2a3e;"
+                            f"border-radius:8px;padding:12px 14px;margin-bottom:8px'>"
+                            f"<div style='display:flex;justify-content:space-between;align-items:center'>"
+                            f"<span style='color:#ccc;font-size:0.88rem;font-weight:600'>{_dim}</span>"
+                            f"<span style='color:{_item_color};font-weight:700;font-size:1rem'>"
+                            f"{_icon} {_pts}/{_max}</span>"
+                            f"</div>"
+                            f"<div style='background:#1e1e2e;border-radius:4px;height:6px;margin:6px 0;overflow:hidden'>"
+                            f"<div style='background:{_item_color};width:{_fill_pct}%;height:100%;border-radius:4px'></div>"
+                            f"</div>"
+                            f"<div style='color:#888;font-size:0.78rem'>{_note}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                _summary_lines = []
+                if _score >= 70:
+                    _summary_lines.append("✅ **具备巴菲特选股基本特征**，适合中长期持有")
+                else:
+                    _summary_lines.append("⚠️ **不完全符合价值投资标准**，建议等待更好价格或寻找更强护城河标的")
+                _weak = [i[0] for i in _bf["items"] if i[3] == "❌"]
+                if _weak:
+                    _summary_lines.append(f"🔴 **主要弱项**：{'、'.join(_weak)}")
+                _strong = [i[0] for i in _bf["items"] if i[3] == "✅"]
+                if _strong:
+                    _summary_lines.append(f"🟢 **核心优势**：{'、'.join(_strong)}")
+                st.info("\n\n".join(_summary_lines))
+
+                st.divider()
+
+                # ── 价格走势 + 技术指标 ───────────────────────────────────────
+                sq_left, sq_right = st.columns([3, 1])
+
+                with sq_left:
+                    st.subheader("📈 价格走势 & 技术指标")
+                    if not sq_hist.empty:
+                        sq_close = sq_hist["Close"]
+                        _ma20    = sq_close.rolling(20).mean()
+                        _ma50    = sq_close.rolling(50).mean()
+                        _ma200s  = sq_close.rolling(200).mean()
+                        _bb_mid  = sq_close.rolling(20).mean()
+                        _bb_std  = sq_close.rolling(20).std()
+                        _bb_up   = _bb_mid + 2 * _bb_std
+                        _bb_dn   = _bb_mid - 2 * _bb_std
+
+                        fig_sq = go.Figure()
+                        fig_sq.add_trace(go.Scatter(x=sq_hist.index, y=sq_close,
+                            name="收盘价", line=dict(color="#4a9eff", width=2)))
+                        fig_sq.add_trace(go.Scatter(x=sq_hist.index, y=_ma20,
+                            name="MA20", line=dict(color="#FFA500", width=1, dash="dot")))
+                        fig_sq.add_trace(go.Scatter(x=sq_hist.index, y=_ma50,
+                            name="MA50", line=dict(color="#00CC96", width=1, dash="dot")))
+                        if len(sq_close) >= 200:
+                            fig_sq.add_trace(go.Scatter(x=sq_hist.index, y=_ma200s,
+                                name="MA200", line=dict(color="#EF553B", width=1.5, dash="dash")))
+                        fig_sq.add_trace(go.Scatter(x=sq_hist.index, y=_bb_up,
+                            name="布林上轨", line=dict(color="rgba(150,150,150,0.4)", width=1)))
+                        fig_sq.add_trace(go.Scatter(x=sq_hist.index, y=_bb_dn,
+                            name="布林下轨", line=dict(color="rgba(150,150,150,0.4)", width=1),
+                            fill="tonexty", fillcolor="rgba(150,150,150,0.05)"))
+                        fig_sq.update_layout(
+                            title=f"{sq_ticker} — {_sq_name} ({sq_period})",
+                            height=430, hovermode="x unified",
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                            **CHART_LAYOUT,
+                        )
+                        st.plotly_chart(fig_sq, use_container_width=True)
+
+                        # RSI 副图
+                        _delta  = sq_close.diff()
+                        _gain   = _delta.clip(lower=0)
+                        _loss   = (-_delta.clip(upper=0))
+                        _rsi14  = 100 - 100 / (1 + _gain.rolling(14).mean() / _loss.rolling(14).mean().replace(0, float("nan")))
+                        _rsi5   = 100 - 100 / (1 + _gain.rolling(5).mean()  / _loss.rolling(5).mean().replace(0,  float("nan")))
+
+                        fig_rsi = go.Figure()
+                        fig_rsi.add_trace(go.Scatter(x=sq_hist.index, y=_rsi14,
+                            name="RSI(14)", line=dict(color="#4a9eff", width=1.5)))
+                        fig_rsi.add_trace(go.Scatter(x=sq_hist.index, y=_rsi5,
+                            name="RSI(5)", line=dict(color="#FFA500", width=1.5)))
+                        fig_rsi.add_hline(y=70, line_dash="dash", line_color="#EF553B", annotation_text="超买70")
+                        fig_rsi.add_hline(y=30, line_dash="dash", line_color="#00CC96", annotation_text="超卖30")
+                        fig_rsi.add_hline(y=50, line_dash="dot",  line_color="gray")
+                        fig_rsi.update_layout(title="RSI", height=200, yaxis=dict(range=[0,100]), **CHART_LAYOUT)
+                        st.plotly_chart(fig_rsi, use_container_width=True)
+                    else:
+                        st.warning("历史行情数据暂不可用")
+
+                with sq_right:
+                    st.subheader("🔢 技术读数")
+                    if not sq_hist.empty and len(sq_hist) >= 5:
+                        _latest = sq_hist["Close"].iloc[-1]
+                        _p5     = sq_hist["Close"].iloc[-6]  if len(sq_hist) >= 6  else sq_hist["Close"].iloc[0]
+                        _p20    = sq_hist["Close"].iloc[-21] if len(sq_hist) >= 21 else sq_hist["Close"].iloc[0]
+                        _c5     = (_latest/_p5  - 1)*100
+                        _c20    = (_latest/_p20 - 1)*100
+                        _d2     = sq_hist["Close"].diff()
+                        _rv14   = (100 - 100/(1+_d2.clip(lower=0).rolling(14).mean()/_d2.clip(upper=0).abs().rolling(14).mean())).iloc[-1]
+                        _rv5    = (100 - 100/(1+_d2.clip(lower=0).rolling(5).mean() /_d2.clip(upper=0).abs().rolling(5).mean())).iloc[-1]
+                        _bbm    = sq_hist["Close"].rolling(20).mean().iloc[-1]
+                        _bbs    = sq_hist["Close"].rolling(20).std().iloc[-1]
+                        _bbpct  = (_latest - (_bbm-2*_bbs))/(4*_bbs)*100 if _bbs else 50
+
+                        for _lbl, _val, _col in [
+                            ("RSI(14)", f"{_rv14:.1f}", "#EF553B" if _rv14>70 else ("#00CC96" if _rv14<30 else "#fff")),
+                            ("RSI(5)",  f"{_rv5:.1f}",  "#EF553B" if _rv5>70  else ("#00CC96" if _rv5<30  else "#fff")),
+                            ("5日涨跌",  f"{_c5:+.1f}%",  "#00CC96" if _c5>=0  else "#EF553B"),
+                            ("20日涨跌", f"{_c20:+.1f}%", "#00CC96" if _c20>=0 else "#EF553B"),
+                            ("BB位置%",  f"{_bbpct:.0f}%","#EF553B" if _bbpct>80 else ("#00CC96" if _bbpct<20 else "#fff")),
+                        ]:
+                            st.markdown(
+                                f"<div style='display:flex;justify-content:space-between;"
+                                f"padding:6px 0;border-bottom:1px solid #1e1e2e'>"
+                                f"<span style='color:#888;font-size:0.85rem'>{_lbl}</span>"
+                                f"<span style='color:{_col};font-weight:600'>{_val}</span></div>",
+                                unsafe_allow_html=True,
+                            )
+
+                        st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+                        st.markdown("**短线信号**")
+                        _slist = []
+                        if _rv5 < 30:   _slist.append(("🟢 RSI超卖", "#00CC96"))
+                        if _rv5 > 70:   _slist.append(("🔴 RSI超买", "#EF553B"))
+                        if _bbpct < 15: _slist.append(("🟢 近布林下轨", "#00CC96"))
+                        if _bbpct > 85: _slist.append(("🔴 近布林上轨", "#EF553B"))
+                        if _c5 < -8:    _slist.append(("⚡ 5日急跌>8%", "#FFA500"))
+                        if not _slist:  _slist.append(("⚪ 无明显信号", "#888"))
+                        for _s, _c in _slist:
+                            st.markdown(f"<div style='color:{_c};font-size:0.88rem;padding:3px 0'>{_s}</div>",
+                                        unsafe_allow_html=True)
+
+                st.divider()
+
+                # ── 财务基本面 3 列 ────────────────────────────────────────────
+                st.subheader("📋 财务基本面")
+                _fa1, _fa2, _fa3 = st.columns(3)
+
+                def _fa_row(label, value):
+                    return (
+                        f"<div style='display:flex;justify-content:space-between;"
+                        f"padding:4px 0;border-bottom:1px solid #1e1e2e;font-size:0.88rem'>"
+                        f"<span style='color:#888'>{label}</span>"
+                        f"<span style='color:#fff'>{value}</span></div>"
+                    )
+
+                with _fa1:
+                    st.markdown("**收入 & 增长**")
+                    _rev   = sq_info.get("totalRevenue")
+                    _rev_s = (f"${_rev/1e9:.2f}B" if _rev and _rev>=1e9 else (f"${_rev/1e6:.0f}M" if _rev else "N/A"))
+                    _edate = "N/A"
+                    if sq_info.get("earningsDate"):
+                        try: _edate = str(sq_info["earningsDate"][0])
+                        except: pass
+                    for _k,_v in [
+                        ("TTM营收",      _rev_s),
+                        ("营收增速YoY",  f"{sq_info.get('revenueGrowth',0)*100:+.1f}%"  if sq_info.get("revenueGrowth") else "N/A"),
+                        ("EPS(TTM)",     f"${sq_info['trailingEps']:.2f}"  if sq_info.get("trailingEps") else "N/A"),
+                        ("EPS(Forward)", f"${sq_info['forwardEps']:.2f}"   if sq_info.get("forwardEps")  else "N/A"),
+                        ("EPS增速",      f"{sq_info.get('earningsGrowth',0)*100:+.1f}%" if sq_info.get("earningsGrowth") else "N/A"),
+                        ("下次财报日",   _edate),
+                    ]: st.markdown(_fa_row(_k,_v), unsafe_allow_html=True)
+
+                with _fa2:
+                    st.markdown("**利润率 & 回报**")
+                    for _k,_v in [
+                        ("毛利率",     f"{sq_info.get('grossMargins',0)*100:.1f}%"     if sq_info.get("grossMargins")    else "N/A"),
+                        ("营业利润率", f"{sq_info.get('operatingMargins',0)*100:.1f}%" if sq_info.get("operatingMargins") else "N/A"),
+                        ("净利率",     f"{sq_info.get('profitMargins',0)*100:.1f}%"    if sq_info.get("profitMargins")   else "N/A"),
+                        ("ROE",        f"{sq_info.get('returnOnEquity',0)*100:.1f}%"   if sq_info.get("returnOnEquity")  else "N/A"),
+                        ("ROA",        f"{sq_info.get('returnOnAssets',0)*100:.1f}%"   if sq_info.get("returnOnAssets")  else "N/A"),
+                        ("自由现金流", f"${sq_info.get('freeCashflow',0)/1e9:.2f}B"    if sq_info.get("freeCashflow")    else "N/A"),
+                    ]: st.markdown(_fa_row(_k,_v), unsafe_allow_html=True)
+
+                with _fa3:
+                    st.markdown("**分析师 & 机构**")
+                    _rec   = sq_info.get("recommendationKey","N/A").upper()
+                    _rc    = {"STRONG_BUY":"#00CC96","BUY":"#82C8FF","HOLD":"#FFA500",
+                              "SELL":"#EF553B","STRONG_SELL":"#CC0000"}.get(_rec,"#aaa")
+                    st.markdown(
+                        f"<div style='text-align:center;padding:10px;border:1px solid {_rc};"
+                        f"border-radius:8px;margin-bottom:8px'>"
+                        f"<div style='font-size:1.2rem;font-weight:700;color:{_rc}'>{_rec}</div>"
+                        f"<div style='color:#888;font-size:0.78rem'>分析师共识</div></div>",
+                        unsafe_allow_html=True,
+                    )
+                    for _k,_v in [
+                        ("分析师数量",  str(sq_info.get("numberOfAnalystOpinions","N/A"))),
+                        ("目标价均值",  f"${sq_info['targetMeanPrice']:.2f}" if sq_info.get("targetMeanPrice") else "N/A"),
+                        ("目标价最高",  f"${sq_info['targetHighPrice']:.2f}" if sq_info.get("targetHighPrice") else "N/A"),
+                        ("目标价最低",  f"${sq_info['targetLowPrice']:.2f}"  if sq_info.get("targetLowPrice")  else "N/A"),
+                        ("机构持仓%",   f"{sq_info.get('heldPercentInstitutions',0)*100:.1f}%" if sq_info.get("heldPercentInstitutions") else "N/A"),
+                        ("做空比例%",   f"{sq_info.get('shortPercentOfFloat',0)*100:.1f}%"    if sq_info.get("shortPercentOfFloat")      else "N/A"),
+                    ]: st.markdown(_fa_row(_k,_v), unsafe_allow_html=True)
+
+                _summary_text = sq_info.get("longBusinessSummary","")
+                if _summary_text:
+                    st.divider()
+                    with st.expander("📖 公司简介"):
+                        st.write(_summary_text)
+
+        elif sq_run and not sq_ticker_raw:
+            st.warning("请输入股票代码")
+        else:
+            if not st.session_state.get("sq_last_ticker"):
+                st.markdown(
+                    "<div style='text-align:center;padding:60px 0;color:#888'>"
+                    "<div style='font-size:3rem'>🔎</div>"
+                    "<div style='font-size:1.2rem;margin-top:12px'>输入任意美股代码，查询完整数据 + 巴菲特评分</div>"
+                    "<div style='font-size:0.85rem;margin-top:8px;color:#aaa'>"
+                    "支持：普通股 / ETF / 港股(.HK) / 台股(.TW)</div>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
 
 
 if __name__ == "__main__":
