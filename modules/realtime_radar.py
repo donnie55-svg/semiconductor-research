@@ -15,7 +15,7 @@ RADAR_TICKERS_BY_SECTOR: Dict[str, List[str]] = {
     "AI算力/GPU/芯片": ["NVDA","MU","ARM","QCOM","INTC","ADI","TXN","NXPI","ON","STM","MPWR","ALAB","CRDO"],
     "半导体设备":       ["ASML","AMAT","KLAC","LRCX","ONTO","TER"],
     "AI服务器/电力":    ["VRT","ETN","NVT","POWL","VST","CEG"],
-    "AI云/软件":        ["MSFT","GOOGL","META","AMZN","PLTR","CRWD","NET","SNOW","DDOG"],
+    "AI云/软件":        ["MSFT","GOOGL","META","AMZN","PLTR","CRWD","NET","SNOW","DDOG","NOW","ZS","PANW","WDAY"],
     "存储/HBM":         ["MU","WDC","STX"],
     "AI网络":           ["ANET","CSCO","LITE","COHR"],
     "核能/新能源":      ["CCJ","NNE","FSLR","VST"],

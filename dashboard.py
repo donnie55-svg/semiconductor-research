@@ -237,6 +237,10 @@ def load_watchlist() -> pd.DataFrame:
         ("GILD", "吉利德 Gilead",       "医药/生物科技", "medium"),
         ("MRNA", "Moderna",             "医药/生物科技", "medium"),
         ("RXRX", "Recursion AI制药",    "医药/生物科技", "medium"),
+        ("NOW",  "ServiceNow",          "AI云/软件", "medium"),
+        ("ZS",   "Zscaler",             "AI云/软件", "medium"),
+        ("PANW", "Palo Alto Networks",  "AI云/软件", "medium"),
+        ("WDAY", "Workday",             "AI云/软件", "medium"),
     ]
     existing = set(df["ticker"].values)
     new_rows = [
@@ -646,6 +650,7 @@ def main():
         SECTOR_REPS = {
             "AI算力/GPU":    ["NVDA", "AMD",  "AVGO"],
             "半导体设备":    ["AMAT", "LRCX", "ASML"],
+            "AI云/软件":     ["NOW",  "CRWD", "PLTR"],
             "AI基础设施":    ["VRT",  "SMCI", "APLD"],
             "能源/核能":     ["CEG",  "VST",  "NNE"],
             "消费零售":      ["WMT",  "AMZN", "COST"],
