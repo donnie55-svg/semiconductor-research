@@ -2413,16 +2413,45 @@ def main():
             items = []
             total = 0
 
-            # 1. 护城河：毛利率 > 40%（权重15）
-            gm = (info.get("grossMargins") or 0) * 100
-            if gm >= 50:
-                pts, icon, note = 15, "✅", f"毛利率 {gm:.1f}% ≥ 50%，定价权强"
-            elif gm >= 40:
-                pts, icon, note = 10, "✅", f"毛利率 {gm:.1f}% ≥ 40%，护城河合格"
-            elif gm >= 25:
-                pts, icon, note = 5,  "⚠️", f"毛利率 {gm:.1f}%，偏低，护城河一般"
+            # 行业分类辅助
+            _sector = info.get("sector", "")
+            _is_tech     = any(k in _sector for k in ("Technology", "Communication"))
+            _is_consumer = any(k in _sector for k in ("Consumer",))
+            _is_finance  = any(k in _sector for k in ("Financial", "Bank"))
+            _is_health   = any(k in _sector for k in ("Healthcare", "Health"))
+            _is_industry = any(k in _sector for k in ("Industrial", "Utilities", "Energy", "Materials"))
+
+            # 1. 护城河：毛利率（权重15，基准按行业调整）
+            if _is_finance:
+                # 金融业用净利率替代毛利率
+                gm = (info.get("profitMargins") or 0) * 100
+                _gm_label = "净利率"
+                _gm_bench_hi, _gm_bench_mid, _gm_bench_lo = 25, 15, 8
+            elif _is_consumer:
+                gm = (info.get("grossMargins") or 0) * 100
+                _gm_label = "毛利率"
+                _gm_bench_hi, _gm_bench_mid, _gm_bench_lo = 30, 20, 10
+            elif _is_tech:
+                gm = (info.get("grossMargins") or 0) * 100
+                _gm_label = "毛利率"
+                _gm_bench_hi, _gm_bench_mid, _gm_bench_lo = 50, 40, 25
+            elif _is_health or _is_industry:
+                gm = (info.get("grossMargins") or 0) * 100
+                _gm_label = "毛利率"
+                _gm_bench_hi, _gm_bench_mid, _gm_bench_lo = 45, 30, 15
             else:
-                pts, icon, note = 0,  "❌", f"毛利率 {gm:.1f}%，无明显定价权"
+                gm = (info.get("grossMargins") or 0) * 100
+                _gm_label = "毛利率"
+                _gm_bench_hi, _gm_bench_mid, _gm_bench_lo = 45, 35, 20
+
+            if gm >= _gm_bench_hi:
+                pts, icon, note = 15, "✅", f"{_gm_label} {gm:.1f}% ≥ {_gm_bench_hi}%，定价权强"
+            elif gm >= _gm_bench_mid:
+                pts, icon, note = 10, "✅", f"{_gm_label} {gm:.1f}% ≥ {_gm_bench_mid}%，护城河合格"
+            elif gm >= _gm_bench_lo:
+                pts, icon, note = 5,  "⚠️", f"{_gm_label} {gm:.1f}%，偏低，护城河一般（行业基准{_gm_bench_mid}%）"
+            else:
+                pts, icon, note = 0,  "❌", f"{_gm_label} {gm:.1f}%，无明显定价权"
             items.append(("🏰 护城河（毛利率）", pts, 15, icon, note))
             total += pts
 
@@ -2487,10 +2516,14 @@ def main():
             items.append(("📈 增长可持续（EPS增速）", pts, 15, icon, note))
             total += pts
 
-            # 6. 估值合理：Forward PE（权重15）
+            # 6. 估值合理：Forward PE（权重15，基准按行业调整）
             fpe = info.get("forwardPE") or 0
-            sector = info.get("sector", "")
-            pe_bench = 20 if "Technology" in sector else (18 if "Consumer" in sector else 16)
+            if _is_tech:       pe_bench = 25
+            elif _is_consumer: pe_bench = 22
+            elif _is_health:   pe_bench = 20
+            elif _is_finance:  pe_bench = 15
+            elif _is_industry: pe_bench = 18
+            else:              pe_bench = 18
             if 0 < fpe <= pe_bench * 0.8:
                 pts, icon, note = 15, "✅", f"Forward PE {fpe:.1f}x，明显低于同类基准 {pe_bench}x，有安全边际"
             elif 0 < fpe <= pe_bench * 1.2:
@@ -2523,6 +2556,25 @@ def main():
             else:             grade, color = "D   不符合标准", "#EF553B"
 
             return {"score": total, "grade": grade, "color": color, "items": items}
+
+        def calc_atr_stoploss(hist_df, atr_period=14, atr_multiplier=2.5):
+            """计算ATR动态止损：止损价 = 当前价 - ATR × multiplier"""
+            if hist_df.empty or len(hist_df) < atr_period + 1:
+                return None, None, None
+            high  = hist_df["High"]
+            low   = hist_df["Low"]
+            close = hist_df["Close"]
+            prev_close = close.shift(1)
+            tr = pd.concat([
+                high - low,
+                (high - prev_close).abs(),
+                (low  - prev_close).abs(),
+            ], axis=1).max(axis=1)
+            atr = tr.rolling(atr_period).mean().iloc[-1]
+            current_price = float(close.iloc[-1])
+            stop_price    = current_price - atr_multiplier * atr
+            stop_pct      = (stop_price / current_price - 1) * 100
+            return round(float(atr), 4), round(stop_price, 2), round(stop_pct, 2)
 
         # ── 执行查询 ──────────────────────────────────────────────────────────
         if sq_run and sq_ticker_raw:
@@ -2782,6 +2834,31 @@ def main():
                         for _s, _c in _slist:
                             st.markdown(f"<div style='color:{_c};font-size:0.88rem;padding:3px 0'>{_s}</div>",
                                         unsafe_allow_html=True)
+
+                        # ATR 动态止损
+                        st.markdown("<div style='margin-top:14px'></div>", unsafe_allow_html=True)
+                        st.markdown("**动态止损参考**")
+                        _atr_val, _atr_stop, _atr_pct = calc_atr_stoploss(sq_hist)
+                        if _atr_val is not None:
+                            for _lbl, _val, _col in [
+                                ("ATR(14)", f"{_atr_val:.2f}", "#aaa"),
+                                ("建议止损价", f"${_atr_stop:.2f}", "#EF553B"),
+                                ("止损幅度", f"{_atr_pct:.1f}%", "#EF553B"),
+                            ]:
+                                st.markdown(
+                                    f"<div style='display:flex;justify-content:space-between;"
+                                    f"padding:5px 0;border-bottom:1px solid #1e1e2e'>"
+                                    f"<span style='color:#888;font-size:0.85rem'>{_lbl}</span>"
+                                    f"<span style='color:{_col};font-weight:600'>{_val}</span></div>",
+                                    unsafe_allow_html=True,
+                                )
+                            st.markdown(
+                                f"<div style='color:#555;font-size:0.72rem;margin-top:4px'>"
+                                f"ATR×2.5 · 当前价 ${_latest:.2f}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.caption("ATR数据不足")
 
                 st.divider()
 
