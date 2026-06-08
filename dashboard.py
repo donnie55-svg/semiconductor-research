@@ -2502,7 +2502,7 @@ def main():
             sq_ticker_raw = st.text_input(
                 "股票代码",
                 placeholder="例：KULR / WMT / AAPL / 2330.TW",
-                key="sq_ticker",
+                key="sq_ticker_input",
             ).strip().upper()
         with sq_col2:
             sq_period = st.selectbox(
@@ -2519,7 +2519,7 @@ def main():
         for _i, _tk in enumerate(sq_shortcuts):
             with sq_btn_cols[_i]:
                 if st.button(_tk, key=f"sq_short_{_tk}", use_container_width=True):
-                    st.session_state["sq_ticker"]      = _tk
+                    st.session_state["sq_ticker_input"] = _tk
                     st.session_state["sq_run_trigger"] = _tk
                     st.rerun()
 
