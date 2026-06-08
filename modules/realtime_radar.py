@@ -22,6 +22,12 @@ RADAR_TICKERS_BY_SECTOR: Dict[str, List[str]] = {
     "航天/国防":        ["RKLB","ASTS","LMT","RTX"],
     "中概股":           ["BABA","PDD","JD","NIO","XPEV","LI"],
     "ETF":              ["SMH","SOXX","SPY","QQQ"],
+    "医药/生物科技":    ["LLY","NVO","JNJ","MRK","ABBV","PFE","AMGN","GILD","MRNA"],
+    "能源/核能":        ["CEG","VST","NNE","SMR","OKLO"],
+    "AI基础设施":       ["VRT","SMCI","APLD","CRWV","IREN"],
+    "机器人/自动化":    ["ISRG","ABB","ACHR"],
+    "防御对冲":         ["V","MA","JNJ","PFE"],
+    "消费零售":         ["WMT","AMZN","COST","TGT","HD","NKE","MCD","SBUX","KO"],
 }
 
 ALL_RADAR_TICKERS: List[str] = list(dict.fromkeys(
