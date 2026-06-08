@@ -2729,7 +2729,13 @@ def main():
                         fig_rsi.add_hline(y=70, line_dash="dash", line_color="#EF553B", annotation_text="超买70")
                         fig_rsi.add_hline(y=30, line_dash="dash", line_color="#00CC96", annotation_text="超卖30")
                         fig_rsi.add_hline(y=50, line_dash="dot",  line_color="gray")
-                        fig_rsi.update_layout(title="RSI", height=200, yaxis=dict(range=[0,100]), **CHART_LAYOUT)
+                        fig_rsi.update_layout(
+                            title="RSI", height=200,
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            xaxis=dict(showgrid=True, gridcolor="rgba(128,128,128,0.15)"),
+                            yaxis=dict(showgrid=True, gridcolor="rgba(128,128,128,0.15)", range=[0,100]),
+                        )
                         st.plotly_chart(fig_rsi, use_container_width=True)
                     else:
                         st.warning("历史行情数据暂不可用")
