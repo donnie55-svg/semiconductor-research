@@ -634,10 +634,10 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
         "📊 市场概览", "💰 估值分析", "🔗 供应链追踪", "📈 财报分析",
         "📰 新闻监控", "📡 财报雷达", "🎯 策略回测", "📻 实时雷达",
-        "🎯 历史验证", "🔎 单股查询",
+        "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达",
     ])
 
     # ════════════════════════════════════════════════════════════════════════════
@@ -3062,6 +3062,119 @@ def main():
                     "</div>",
                     unsafe_allow_html=True,
                 )
+
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # TAB 11  盘前雷达
+    # ════════════════════════════════════════════════════════════════════════════
+    with tab11:
+        st.header("🌅 盘前雷达")
+        st.caption("扫描 watchlist 全部股票的盘前数据（仅美股盘前时段 04:00–09:30 ET 有报价）")
+
+        if st.button("🔄 扫描盘前异动", type="primary"):
+            import time as _time
+            import yfinance as _yf
+
+            _now = datetime.now()
+            _last = st.session_state.get("_pm_scan_at")
+
+            # @st.cache_data(ttl=300) equivalent via session_state — allows per-ticker progress bar
+            if _last and (_now - _last).total_seconds() < 300:
+                _secs_left = int(300 - (_now - _last).total_seconds())
+                _cached_count = len(st.session_state.get("_pm_rows", []))
+                st.info(f"📦 使用缓存数据（{_secs_left} 秒后过期），共 {_cached_count} 只股票有盘前数据")
+            else:
+                _pairs = [(r["ticker"], r["sector"]) for _, r in wl.iterrows()]
+                _n = len(_pairs)
+                _prog = st.progress(0, text=f"开始扫描 {_n} 只股票...")
+                _rows = []
+
+                for _i, (_tk, _sec) in enumerate(_pairs):
+                    _prog.progress((_i + 1) / _n, text=f"扫描 {_tk}... ({_i + 1}/{_n})")
+                    try:
+                        _info = _yf.Ticker(_tk).info
+                        _pm = _info.get("preMarketPrice")
+                        _pc = _info.get("previousClose")
+                        if _pm is None or _pc is None or _pc == 0:
+                            _time.sleep(0.1)
+                            continue
+                        _chg = (_pm - _pc) / _pc * 100
+                        _rows.append({
+                            "ticker":        _tk,
+                            "sector":        _sec,
+                            "prev_close":    _pc,
+                            "pm_price":      _pm,
+                            "pm_change_pct": round(_chg, 2),
+                            "pm_volume":     _info.get("preMarketVolume"),
+                        })
+                    except Exception:
+                        pass
+                    _time.sleep(0.1)
+
+                _prog.empty()
+                st.session_state["_pm_rows"]    = _rows
+                st.session_state["_pm_scan_at"] = _now
+                _t_str = _now.strftime("%H:%M")
+                st.success(f"✅ 扫描完成，共 {len(_rows)} 只股票有盘前数据，时间：{_t_str}")
+
+        # ── Display ────────────────────────────────────────────────────────────
+        _pm_rows = st.session_state.get("_pm_rows")
+        if _pm_rows is not None:
+            if not _pm_rows:
+                st.info("暂无盘前数据（可能不在盘前交易时段 04:00–09:30 ET，或所有股票均无盘前报价）")
+            else:
+                _pm_df = (
+                    pd.DataFrame(_pm_rows)
+                    .sort_values("pm_change_pct", ascending=False)
+                    .reset_index(drop=True)
+                )
+
+                # ── 强势 / 弱势 小结 ──────────────────────────────────────────
+                _strong = _pm_df[_pm_df["pm_change_pct"] >  2]["ticker"].tolist()
+                _weak   = _pm_df[_pm_df["pm_change_pct"] < -2]["ticker"].tolist()
+
+                _sc1, _sc2 = st.columns(2)
+                with _sc1:
+                    if _strong:
+                        st.success(f"🚀 强势股（涨幅>2%）：{', '.join(_strong)}")
+                    else:
+                        st.caption("🚀 强势股（涨幅>2%）：暂无")
+                with _sc2:
+                    if _weak:
+                        st.error(f"⚠️ 弱势股（跌幅>2%）：{', '.join(_weak)}")
+                    else:
+                        st.caption("⚠️ 弱势股（跌幅>2%）：暂无")
+
+                # ── 完整表格 ──────────────────────────────────────────────────
+                _disp = _pm_df.rename(columns={
+                    "ticker":        "股票代码",
+                    "sector":        "所属板块",
+                    "prev_close":    "昨收价",
+                    "pm_price":      "盘前价",
+                    "pm_change_pct": "涨跌幅%",
+                    "pm_volume":     "盘前成交量",
+                })
+
+                def _pm_row_highlight(row):
+                    chg = row["涨跌幅%"]
+                    if chg > 2:
+                        return ["background-color: rgba(0,204,150,0.15)"] * len(row)
+                    if chg < -2:
+                        return ["background-color: rgba(239,85,59,0.15)"] * len(row)
+                    return [""] * len(row)
+
+                _styled_pm = (
+                    _disp.style
+                    .format({
+                        "昨收价":     "${:.2f}",
+                        "盘前价":     "${:.2f}",
+                        "涨跌幅%":    "{:+.2f}%",
+                        "盘前成交量": "{:,.0f}",
+                    }, na_rep="N/A")
+                    .apply(_pm_row_highlight, axis=1)
+                )
+
+                st.dataframe(_styled_pm, use_container_width=True, hide_index=True)
 
 
 if __name__ == "__main__":
