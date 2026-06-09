@@ -693,10 +693,10 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
         "📊 市场概览", "💰 估值分析", "🔗 供应链追踪", "📈 财报分析",
         "📰 新闻监控", "📡 财报雷达", "🎯 策略回测", "📻 实时雷达",
-        "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达", "📅 经济日历",
+        "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达", "📅 经济日历", "💼 持仓跟踪",
     ])
 
     # ════════════════════════════════════════════════════════════════════════════
@@ -3342,6 +3342,245 @@ def main():
             st.caption(
                 f"数据来源: Forex Factory · 仅显示 USD 事件 · 共 {len(_ec_show)} 条"
                 f" · 时间已转换为北京时间（ET+13h）· 1小时自动刷新"
+            )
+
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # TAB 13  持仓跟踪
+    # ════════════════════════════════════════════════════════════════════════════
+    with tab13:
+        st.header("💼 持仓跟踪")
+
+        _POS_FILE = "positions.csv"
+        _POS_COLS = ["ticker", "买入价", "股数", "买入日期", "止损价", "目标价", "备注"]
+
+        def _load_positions() -> pd.DataFrame:
+            if not os.path.exists(_POS_FILE):
+                df = pd.DataFrame(columns=_POS_COLS)
+                df.to_csv(_POS_FILE, index=False, encoding="utf-8")
+                return df
+            try:
+                df = pd.read_csv(_POS_FILE, encoding="utf-8")
+                for c in _POS_COLS:
+                    if c not in df.columns:
+                        df[c] = "" if c in ("买入日期", "备注") else 0.0
+                return df
+            except Exception:
+                return pd.DataFrame(columns=_POS_COLS)
+
+        def _save_positions(df: pd.DataFrame) -> None:
+            df.to_csv(_POS_FILE, index=False, encoding="utf-8")
+
+        # ── 删除操作（在表单渲染之前处理，避免 key 冲突）────────────────────
+        if st.session_state.get("_pos_delete_idx") is not None:
+            _del_idx = st.session_state.pop("_pos_delete_idx")
+            _df_cur = _load_positions()
+            if 0 <= _del_idx < len(_df_cur):
+                _df_cur = _df_cur.drop(index=_del_idx).reset_index(drop=True)
+                _save_positions(_df_cur)
+            st.rerun()
+
+        # ════════════════════════════════════════════════
+        # 上半部分：添加新持仓
+        # ════════════════════════════════════════════════
+        st.subheader("➕ 添加新持仓")
+
+        with st.form("_pos_add_form", clear_on_submit=True):
+            _fa1, _fa2, _fa3, _fa4 = st.columns([1, 1, 1, 1])
+            _fa5, _fa6, _fa7, _fa8 = st.columns([1, 1, 2, 1])
+
+            with _fa1:
+                _new_tk   = st.text_input("股票代码", placeholder="NVDA").strip().upper()
+            with _fa2:
+                _new_bp   = st.number_input("买入价 ($)", min_value=0.0, step=0.01, format="%.2f")
+            with _fa3:
+                _new_sh   = st.number_input("股数", min_value=0.0, step=1.0, format="%.0f")
+            with _fa4:
+                _new_dt   = st.date_input("买入日期", value=datetime.today())
+            with _fa5:
+                _new_sl   = st.number_input("止损价 ($)", min_value=0.0, step=0.01, format="%.2f")
+            with _fa6:
+                _new_tp   = st.number_input("目标价 ($)", min_value=0.0, step=0.01, format="%.2f")
+            with _fa7:
+                _new_note = st.text_input("备注", placeholder="策略/理由...")
+            with _fa8:
+                st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+                _submitted = st.form_submit_button("➕ 添加持仓", type="primary", use_container_width=True)
+
+        if _submitted:
+            if not _new_tk:
+                st.warning("请输入股票代码")
+            elif _new_bp <= 0 or _new_sh <= 0:
+                st.warning("买入价和股数必须大于 0")
+            else:
+                _df_add = _load_positions()
+                _new_row = pd.DataFrame([{
+                    "ticker":  _new_tk,
+                    "买入价":  _new_bp,
+                    "股数":    _new_sh,
+                    "买入日期": str(_new_dt),
+                    "止损价":  _new_sl,
+                    "目标价":  _new_tp,
+                    "备注":    _new_note,
+                }])
+                _df_add = pd.concat([_df_add, _new_row], ignore_index=True)
+                _save_positions(_df_add)
+                st.success(f"✅ 已添加 {_new_tk}（{_new_sh:.0f} 股 @ ${_new_bp:.2f}）")
+                st.rerun()
+
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # 下半部分：当前持仓表格
+        # ════════════════════════════════════════════════
+        _ph1, _ph2 = st.columns([4, 1])
+        with _ph1:
+            st.subheader("📊 当前持仓")
+        with _ph2:
+            st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+            if st.button("🔄 刷新价格", use_container_width=True):
+                st.rerun()
+
+        _pos_df = _load_positions()
+
+        if _pos_df.empty:
+            st.info("暂无持仓记录，请在上方添加")
+        else:
+            import yfinance as _yf_pos
+
+            # 批量拉取当前价格
+            _tickers_pos = _pos_df["ticker"].tolist()
+            _price_map: dict = {}
+            with st.spinner("获取当前价格..."):
+                for _tk in _tickers_pos:
+                    try:
+                        _fast = _yf_pos.Ticker(_tk).fast_info
+                        _price_map[_tk] = float(_fast.last_price)
+                    except Exception:
+                        _price_map[_tk] = None
+
+            # 构建展示行
+            _rows_disp = []
+            for _i, _r in _pos_df.iterrows():
+                _tk   = str(_r["ticker"])
+                _bp   = float(_r["买入价"])
+                _sh   = float(_r["股数"])
+                _sl   = float(_r["止损价"])  if pd.notna(_r["止损价"])  and float(_r["止损价"])  > 0 else None
+                _tp   = float(_r["目标价"])  if pd.notna(_r["目标价"])  and float(_r["目标价"])  > 0 else None
+                _cp   = _price_map.get(_tk)
+
+                _cost    = _bp * _sh
+                _mkt_val = _cp * _sh if _cp else None
+                _pnl_amt = (_cp - _bp) * _sh if _cp else None
+                _pnl_pct = (_cp - _bp) / _bp * 100 if _cp and _bp > 0 else None
+                _dist_sl = (_cp - _sl) / _sl * 100 if _cp and _sl else None
+                _dist_tp = (_tp - _cp) / _cp * 100 if _cp and _tp else None
+
+                _rows_disp.append({
+                    "_idx":     _i,
+                    "ticker":   _tk,
+                    "买入价":   _bp,
+                    "股数":     int(_sh),
+                    "买入日期": str(_r.get("买入日期", "")),
+                    "止损价":   _sl or "—",
+                    "目标价":   _tp or "—",
+                    "当前价":   _cp,
+                    "浮盈金额": _pnl_amt,
+                    "浮盈%":    _pnl_pct,
+                    "距止损%":  _dist_sl,
+                    "距目标%":  _dist_tp,
+                    "市值":     _mkt_val,
+                    "成本":     _cost,
+                    "备注":     str(_r.get("备注", "")),
+                    "_sl_breached": _cp is not None and _sl is not None and _cp < _sl,
+                })
+
+            _disp_df = pd.DataFrame(_rows_disp)
+
+            # ── 逐行渲染（支持删除按钮）──────────────────────────────────────
+            _hdr = st.columns([1, 1, 1, 1, 1.2, 1.2, 1.2, 1.2, 2, 0.6])
+            for _lbl, _col in zip(
+                ["股票", "买入价", "股数", "当前价", "浮盈金额", "浮盈%", "距止损%", "距目标%", "备注", ""],
+                _hdr,
+            ):
+                _col.markdown(f"<div style='font-size:0.8rem;color:#888;font-weight:700'>{_lbl}</div>",
+                              unsafe_allow_html=True)
+
+            for _, _row in _disp_df.iterrows():
+                _pnl_ok    = (_row["浮盈%"] or 0) >= 0
+                _sl_hit    = bool(_row["_sl_breached"])
+                _row_color = (
+                    "rgba(255,140,0,0.18)"   if _sl_hit else
+                    "rgba(0,204,150,0.10)"   if _pnl_ok else
+                    "rgba(239,85,59,0.10)"
+                )
+                _pnl_text_c = "#00CC96" if _pnl_ok else "#EF553B"
+
+                def _fmt(v, fmt="", prefix="", suffix=""):
+                    if v is None or (isinstance(v, float) and pd.isna(v)):
+                        return "—"
+                    try:
+                        return f"{prefix}{fmt.format(float(v))}{suffix}"
+                    except Exception:
+                        return str(v)
+
+                _cols_r = st.columns([1, 1, 1, 1, 1.2, 1.2, 1.2, 1.2, 2, 0.6])
+                _style  = f"padding:6px 4px;background:{_row_color};border-radius:4px;font-size:0.88rem"
+
+                _cols_r[0].markdown(f"<div style='{_style};font-weight:700'>{_row['ticker']}</div>",
+                                    unsafe_allow_html=True)
+                _cols_r[1].markdown(f"<div style='{_style}'>${_row['买入价']:.2f}</div>",
+                                    unsafe_allow_html=True)
+                _cols_r[2].markdown(f"<div style='{_style}'>{_row['股数']}</div>",
+                                    unsafe_allow_html=True)
+                _cols_r[3].markdown(
+                    f"<div style='{_style}'>{_fmt(_row['当前价'], '{:.2f}', '$')}</div>",
+                    unsafe_allow_html=True,
+                )
+                _cols_r[4].markdown(
+                    f"<div style='{_style};color:{_pnl_text_c}'>"
+                    f"{_fmt(_row['浮盈金额'], '{:+.0f}', '$')}</div>",
+                    unsafe_allow_html=True,
+                )
+                _cols_r[5].markdown(
+                    f"<div style='{_style};color:{_pnl_text_c};font-weight:700'>"
+                    f"{_fmt(_row['浮盈%'], '{:+.2f}', suffix='%')}</div>",
+                    unsafe_allow_html=True,
+                )
+                _cols_r[6].markdown(
+                    f"<div style='{_style}'>{_fmt(_row['距止损%'], '{:+.1f}', suffix='%')}</div>",
+                    unsafe_allow_html=True,
+                )
+                _cols_r[7].markdown(
+                    f"<div style='{_style}'>{_fmt(_row['距目标%'], '{:+.1f}', suffix='%')}</div>",
+                    unsafe_allow_html=True,
+                )
+                _cols_r[8].markdown(
+                    f"<div style='{_style};color:#aaa'>{_row['备注'] or '—'}</div>",
+                    unsafe_allow_html=True,
+                )
+                if _cols_r[9].button("🗑️", key=f"_del_{_row['_idx']}_{_row['ticker']}"):
+                    st.session_state["_pos_delete_idx"] = int(_row["_idx"])
+                    st.rerun()
+
+            # ── 汇总行 ────────────────────────────────────────────────────────
+            st.divider()
+            _total_cost = _disp_df["成本"].sum()
+            _valid_mkt  = _disp_df["市值"].dropna()
+            _total_mkt  = _valid_mkt.sum() if not _valid_mkt.empty else None
+            _total_pnl  = (_total_mkt - _disp_df.loc[_valid_mkt.index, "成本"].sum()) if _total_mkt else None
+
+            _sm1, _sm2, _sm3 = st.columns(3)
+            _sm1.metric("总投入", f"${_total_cost:,.0f}")
+            _sm2.metric(
+                "当前总市值",
+                f"${_total_mkt:,.0f}" if _total_mkt else "N/A",
+            )
+            _pnl_delta = f"{_total_pnl:+,.0f}" if _total_pnl is not None else None
+            _sm3.metric(
+                "总浮动盈亏",
+                f"${_total_pnl:+,.0f}" if _total_pnl is not None else "N/A",
+                delta=_pnl_delta,
             )
 
 
