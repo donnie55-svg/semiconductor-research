@@ -3099,6 +3099,11 @@ def main():
                             _time.sleep(0.1)
                             continue
                         _chg = (_pm - _pc) / _pc * 100
+                        try:
+                            _news = _yf.Ticker(_tk).news
+                            _headline = _news[0].get("content", {}).get("title") or _news[0].get("title", "—") if _news else "—"
+                        except Exception:
+                            _headline = "—"
                         _rows.append({
                             "ticker":        _tk,
                             "sector":        _sec,
@@ -3106,6 +3111,7 @@ def main():
                             "pm_price":      _pm,
                             "pm_change_pct": round(_chg, 2),
                             "pm_volume":     _info.get("preMarketVolume"),
+                            "news_title":    _headline,
                         })
                     except Exception:
                         pass
@@ -3153,6 +3159,7 @@ def main():
                     "pm_price":      "盘前价",
                     "pm_change_pct": "涨跌幅%",
                     "pm_volume":     "盘前成交量",
+                    "news_title":    "最新消息",
                 })
 
                 def _pm_row_highlight(row):
@@ -3174,7 +3181,14 @@ def main():
                     .apply(_pm_row_highlight, axis=1)
                 )
 
-                st.dataframe(_styled_pm, use_container_width=True, hide_index=True)
+                st.dataframe(
+                    _styled_pm,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "最新消息": st.column_config.TextColumn("最新消息", width="large"),
+                    },
+                )
 
 
 if __name__ == "__main__":
