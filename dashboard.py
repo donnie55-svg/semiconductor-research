@@ -3493,14 +3493,27 @@ def main():
                     "成本":     _cost,
                     "备注":     str(_r.get("备注", "")),
                     "_sl_breached": _cp is not None and _sl is not None and _cp < _sl,
+                    "_advice":  (
+                        ("⚠️ 已触发止损，建议清仓",            "#FF6B35")
+                        if _cp is not None and _sl is not None and _cp <= _sl else
+                        ("✅ 已达目标价，建议清仓或移动止损",  "#00CC96")
+                        if _cp is not None and _tp is not None and _tp > 0 and _cp >= _tp else
+                        ("🎯 接近目标价，建议减仓1/3",         "#82C8FF")
+                        if _cp is not None and _tp is not None and _tp > 0 and _cp >= _tp * 0.95 else
+                        ("🟡 接近止损，注意风控",               "#FFD700")
+                        if _dist_sl is not None and _dist_sl <= 5 else
+                        ("👀 正常持有，观察基本面",             "#888888")
+                        if _cp is not None else
+                        ("—",                                  "#555555")
+                    ),
                 })
 
             _disp_df = pd.DataFrame(_rows_disp)
 
             # ── 逐行渲染（支持删除按钮）──────────────────────────────────────
-            _hdr = st.columns([1, 1, 1, 1, 1.2, 1.2, 1.2, 1.2, 2, 0.6])
+            _hdr = st.columns([1, 1, 1, 1, 1.2, 1.2, 1.2, 1.2, 1.5, 2.8, 0.6])
             for _lbl, _col in zip(
-                ["股票", "买入价", "股数", "当前价", "浮盈金额", "浮盈%", "距止损%", "距目标%", "备注", ""],
+                ["股票", "买入价", "股数", "当前价", "浮盈金额", "浮盈%", "距止损%", "距目标%", "备注", "操作建议", ""],
                 _hdr,
             ):
                 _col.markdown(f"<div style='font-size:0.8rem;color:#888;font-weight:700'>{_lbl}</div>",
@@ -3524,7 +3537,7 @@ def main():
                     except Exception:
                         return str(v)
 
-                _cols_r = st.columns([1, 1, 1, 1, 1.2, 1.2, 1.2, 1.2, 2, 0.6])
+                _cols_r = st.columns([1, 1, 1, 1, 1.2, 1.2, 1.2, 1.2, 1.5, 2.8, 0.6])
                 _style  = f"padding:6px 4px;background:{_row_color};border-radius:4px;font-size:0.88rem"
 
                 _cols_r[0].markdown(f"<div style='{_style};font-weight:700'>{_row['ticker']}</div>",
@@ -3559,9 +3572,16 @@ def main():
                     f"<div style='{_style};color:#aaa'>{_row['备注'] or '—'}</div>",
                     unsafe_allow_html=True,
                 )
-                if _cols_r[9].button("🗑️", key=f"_del_{_row['_idx']}_{_row['ticker']}"):
+                _adv_txt, _adv_c = _row["_advice"]
+                _cols_r[9].markdown(
+                    f"<div style='{_style};color:{_adv_c};font-size:0.83rem'>{_adv_txt}</div>",
+                    unsafe_allow_html=True,
+                )
+                if _cols_r[10].button("🗑️", key=f"_del_{_row['_idx']}_{_row['ticker']}"):
                     st.session_state["_pos_delete_idx"] = int(_row["_idx"])
                     st.rerun()
+
+            st.caption("💡 建议仅供参考，以基本面预期和风控纪律为准")
 
             # ── 汇总行 ────────────────────────────────────────────────────────
             st.divider()
