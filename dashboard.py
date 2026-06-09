@@ -133,64 +133,134 @@ def c_radar_signals(tickers_key: str, backtest_grades_key: str = ""):
     except Exception:
         return [], {"state":"unknown","emoji":"⚪","label":"扫描失败"}, None
 
-@st.cache_data(ttl=3600)
-def c_econ_calendar() -> pd.DataFrame:
-    """本周 USD 经济日历，来自 Forex Factory 免费 JSON，1小时缓存。"""
-    import requests
-    from datetime import timezone, timedelta
+def _build_static_econ_calendar() -> pd.DataFrame:
+    """Hardcoded weekly template of recurring USD economic events (ET→BJT +12h)."""
+    from datetime import timedelta
 
-    _URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
-    try:
-        resp = requests.get(_URL, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        return pd.DataFrame()
+    today = datetime.today()
+    monday = today - timedelta(days=today.weekday())
+
+    # (weekday 0=Mon…4=Fri, hour_ET, min_ET, title, impact)
+    _TEMPLATE = [
+        (0,  9, 45, "Markit制造业PMI终值",                       "Medium"),
+        (0, 10,  0, "ISM制造业PMI",                               "High"),
+        (1,  8, 30, "贸易差额 Trade Balance",                     "Medium"),
+        (1, 10,  0, "JOLTS职位空缺数",                            "High"),
+        (1, 10,  0, "消费者信心指数 CB Consumer Confidence",      "High"),
+        (2,  8, 15, "ADP非农就业人数 ADP Employment",             "High"),
+        (2,  8, 30, "核心PCE物价指数",                            "High"),
+        (2,  9, 45, "Markit服务业PMI终值",                        "Medium"),
+        (2, 10, 30, "EIA原油库存 Crude Oil Inventories",          "Medium"),
+        (3,  8, 30, "初请失业金 Initial Jobless Claims",          "High"),
+        (3,  8, 30, "续请失业金 Continuing Claims",               "Medium"),
+        (3, 10,  0, "ISM非制造业PMI",                             "Medium"),
+        (4,  8, 30, "非农就业人数 Nonfarm Payrolls",              "High"),
+        (4,  8, 30, "失业率 Unemployment Rate",                   "High"),
+        (4,  8, 30, "平均时薪 Avg Hourly Earnings",               "High"),
+        (4, 10,  0, "密歇根消费者信心指数 UoM Sentiment",         "Medium"),
+    ]
 
     rows = []
-    _ET  = timezone(timedelta(hours=-4))   # EDT (夏令时)
-    _CST = timezone(timedelta(hours=+8))   # 北京时间
-
-    for item in data:
-        if item.get("currency") != "USD":
-            continue
-        date_str = item.get("date", "")
-        time_str = item.get("time", "")
-        try:
-            dt_naive = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%dT%H:%M:%S %I:%M%p")
-        except Exception:
-            try:
-                # 部分条目 time 可能为空或"Tentative"/"All Day"
-                dt_naive = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
-            except Exception:
-                dt_naive = None
-
-        if dt_naive is not None:
-            dt_et  = dt_naive.replace(tzinfo=_ET)
-            dt_bj  = dt_et.astimezone(_CST)
-            bj_str = dt_bj.strftime("%m-%d %H:%M")
-            sort_key = dt_bj
-        else:
-            bj_str   = "—"
-            sort_key = datetime.max.replace(tzinfo=_CST)
-
+    _impact_order = {"High": 0, "Medium": 1, "Low": 2}
+    for weekday, h_et, m_et, title, impact in _TEMPLATE:
+        day_et = monday + timedelta(days=weekday)
+        # EDT (UTC-4) → BJT (UTC+8): +12 hours
+        bj_total_h = h_et + 12
+        bj_day = day_et + timedelta(days=bj_total_h // 24)
+        bj_h   = bj_total_h % 24
+        bj_str = f"{bj_day.strftime('%m-%d')} {bj_h:02d}:{m_et:02d}"
+        sort_key = datetime(bj_day.year, bj_day.month, bj_day.day, bj_h, m_et)
         rows.append({
-            "_sort":    sort_key,
-            "北京时间": bj_str,
-            "date_only": date_str[:10] if date_str else "",
-            "事件名称": item.get("title", ""),
-            "impact":   item.get("impact", ""),
-            "预期值":   item.get("forecast", "—") or "—",
-            "前值":     item.get("previous", "—") or "—",
+            "_sort":     sort_key,
+            "北京时间":  bj_str,
+            "date_only": day_et.strftime("%Y-%m-%d"),
+            "事件名称":  title,
+            "impact":    impact,
+            "预期值":    "—",
+            "前值":      "—",
         })
 
-    if not rows:
-        return pd.DataFrame()
-
     df = pd.DataFrame(rows).sort_values("_sort").reset_index(drop=True)
-    _impact_order = {"High": 0, "Medium": 1, "Low": 2}
     df["impact_rank"] = df["impact"].map(_impact_order).fillna(3)
     return df
+
+
+@st.cache_data(ttl=3600)
+def c_econ_calendar() -> tuple:
+    """(DataFrame, is_static). Tries TradingEconomics, falls back to static template."""
+    import requests
+    from datetime import timezone, timedelta, date
+
+    _ET  = timezone(timedelta(hours=-4))   # EDT
+    _CST = timezone(timedelta(hours=+8))   # BJT
+    _impact_order = {"High": 0, "Medium": 1, "Low": 2}
+
+    def _te_to_df(data: list) -> pd.DataFrame:
+        _imp_map = {1: "Low", 2: "Medium", 3: "High"}
+        rows = []
+        for item in data:
+            country = item.get("Country", item.get("country", ""))
+            if country not in ("United States", "US", "USA"):
+                continue
+            date_str = item.get("Date", item.get("date", ""))
+            try:
+                dt_naive = datetime.strptime(date_str[:19], "%Y-%m-%dT%H:%M:%S")
+                dt_bj    = dt_naive.replace(tzinfo=_ET).astimezone(_CST)
+                bj_str   = dt_bj.strftime("%m-%d %H:%M")
+                sort_key = dt_bj
+                date_only = dt_naive.strftime("%Y-%m-%d")
+            except Exception:
+                bj_str = "—"; sort_key = datetime.max.replace(tzinfo=_CST); date_only = ""
+
+            imp_raw = item.get("Importance", item.get("importance", item.get("impact", 1)))
+            impact  = _imp_map.get(imp_raw, imp_raw.capitalize() if isinstance(imp_raw, str) else "Low")
+
+            rows.append({
+                "_sort":     sort_key,
+                "北京时间":  bj_str,
+                "date_only": date_only,
+                "事件名称":  item.get("Category", item.get("title", item.get("category", ""))),
+                "impact":    impact,
+                "预期值":    str(item.get("Forecast", item.get("forecast", "—")) or "—"),
+                "前值":      str(item.get("Previous", item.get("previous", "—")) or "—"),
+            })
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows).sort_values("_sort").reset_index(drop=True)
+        df["impact_rank"] = df["impact"].map(_impact_order).fillna(3)
+        return df
+
+    # ── Attempt: TradingEconomics ─────────────────────────────────────────────
+    today   = date.today()
+    monday  = today - timedelta(days=today.weekday())
+    sunday  = monday + timedelta(days=6)
+    _TE_URL = (
+        "https://economic-calendar.tradingeconomics.com/calendar"
+        f"?d1={monday}&d2={sunday}&c=usa&i=1"
+    )
+    _HDRS = {
+        "Accept":           "application/json, text/javascript, */*; q=0.01",
+        "Referer":          "https://economic-calendar.tradingeconomics.com/",
+        "User-Agent":       (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    try:
+        resp = requests.get(_TE_URL, headers=_HDRS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list) and data:
+            df = _te_to_df(data)
+            if not df.empty:
+                return df, False
+    except Exception:
+        pass
+
+    # ── Static fallback ───────────────────────────────────────────────────────
+    return _build_static_econ_calendar(), True
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -3267,11 +3337,17 @@ def main():
                 st.rerun()
 
         with st.spinner("加载本周经济日历..."):
-            _ec_df = c_econ_calendar()
+            _ec_df, _ec_is_static = c_econ_calendar()
 
-        if _ec_df.empty:
-            st.warning("经济日历加载失败，请检查网络后点击刷新")
-        else:
+        if _ec_is_static:
+            st.warning(
+                "⚠️ 实时数据暂不可用，显示常规日历模板，请配合 investing.com 查看完整日历",
+                icon=None,
+            )
+            st.link_button("📅 前往 Investing.com 经济日历", "https://www.investing.com/economic-calendar/")
+            st.divider()
+
+        if True:  # always show (static or live)
             # ── 今日高影响事件摘要 ────────────────────────────────────────────
             _today_et = datetime.now().strftime("%Y-%m-%d")
             _high_today = _ec_df[
@@ -3339,9 +3415,10 @@ def main():
                 },
             )
 
+            _ec_src = "常规模板（固定事件）" if _ec_is_static else "TradingEconomics（实时）"
             st.caption(
-                f"数据来源: Forex Factory · 仅显示 USD 事件 · 共 {len(_ec_show)} 条"
-                f" · 时间已转换为北京时间（ET+13h）· 1小时自动刷新"
+                f"数据来源: {_ec_src} · 仅显示 USD 事件 · 共 {len(_ec_show)} 条"
+                f" · 时间已转换为北京时间（EDT+12h）· 1小时自动刷新"
             )
 
 
