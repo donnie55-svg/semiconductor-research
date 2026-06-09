@@ -133,6 +133,65 @@ def c_radar_signals(tickers_key: str, backtest_grades_key: str = ""):
     except Exception:
         return [], {"state":"unknown","emoji":"⚪","label":"扫描失败"}, None
 
+@st.cache_data(ttl=3600)
+def c_econ_calendar() -> pd.DataFrame:
+    """本周 USD 经济日历，来自 Forex Factory 免费 JSON，1小时缓存。"""
+    import requests
+    from datetime import timezone, timedelta
+
+    _URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+    try:
+        resp = requests.get(_URL, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return pd.DataFrame()
+
+    rows = []
+    _ET  = timezone(timedelta(hours=-4))   # EDT (夏令时)
+    _CST = timezone(timedelta(hours=+8))   # 北京时间
+
+    for item in data:
+        if item.get("currency") != "USD":
+            continue
+        date_str = item.get("date", "")
+        time_str = item.get("time", "")
+        try:
+            dt_naive = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%dT%H:%M:%S %I:%M%p")
+        except Exception:
+            try:
+                # 部分条目 time 可能为空或"Tentative"/"All Day"
+                dt_naive = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
+            except Exception:
+                dt_naive = None
+
+        if dt_naive is not None:
+            dt_et  = dt_naive.replace(tzinfo=_ET)
+            dt_bj  = dt_et.astimezone(_CST)
+            bj_str = dt_bj.strftime("%m-%d %H:%M")
+            sort_key = dt_bj
+        else:
+            bj_str   = "—"
+            sort_key = datetime.max.replace(tzinfo=_CST)
+
+        rows.append({
+            "_sort":    sort_key,
+            "北京时间": bj_str,
+            "date_only": date_str[:10] if date_str else "",
+            "事件名称": item.get("title", ""),
+            "impact":   item.get("impact", ""),
+            "预期值":   item.get("forecast", "—") or "—",
+            "前值":     item.get("previous", "—") or "—",
+        })
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows).sort_values("_sort").reset_index(drop=True)
+    _impact_order = {"High": 0, "Medium": 1, "Low": 2}
+    df["impact_rank"] = df["impact"].map(_impact_order).fillna(3)
+    return df
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 _DEFAULT_SECTOR = "AI算力/GPU/芯片"
@@ -634,10 +693,10 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
         "📊 市场概览", "💰 估值分析", "🔗 供应链追踪", "📈 财报分析",
         "📰 新闻监控", "📡 财报雷达", "🎯 策略回测", "📻 实时雷达",
-        "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达",
+        "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达", "📅 经济日历",
     ])
 
     # ════════════════════════════════════════════════════════════════════════════
@@ -3189,6 +3248,101 @@ def main():
                         "最新消息": st.column_config.TextColumn("最新消息", width="large"),
                     },
                 )
+
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # TAB 12  经济日历
+    # ════════════════════════════════════════════════════════════════════════════
+    with tab12:
+        st.header("📅 经济日历")
+        st.info(
+            "⚠️ **操作纪律**：高影响事件发布前后避免开仓，关注 SPY 方向确认后再操作",
+            icon=None,
+        )
+
+        _ec_col1, _ec_col2 = st.columns([6, 1])
+        with _ec_col2:
+            if st.button("🔄 刷新", key="_ec_refresh"):
+                c_econ_calendar.clear()
+                st.rerun()
+
+        with st.spinner("加载本周经济日历..."):
+            _ec_df = c_econ_calendar()
+
+        if _ec_df.empty:
+            st.warning("经济日历加载失败，请检查网络后点击刷新")
+        else:
+            # ── 今日高影响事件摘要 ────────────────────────────────────────────
+            _today_et = datetime.now().strftime("%Y-%m-%d")
+            _high_today = _ec_df[
+                (_ec_df["impact"] == "High") & (_ec_df["date_only"] == _today_et)
+            ]
+            if not _high_today.empty:
+                _ht_list = " · ".join(
+                    f"{r['北京时间']} {r['事件名称']}"
+                    for _, r in _high_today.iterrows()
+                )
+                st.markdown(
+                    f"<div style='background:rgba(239,85,59,0.12);border:1px solid #EF553B;"
+                    f"border-radius:8px;padding:10px 16px;margin-bottom:12px'>"
+                    f"<span style='color:#EF553B;font-weight:700'>🔴 今日高影响事件：</span>"
+                    f"<span style='color:#fff'>{_ht_list}</span></div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.success("✅ 今日暂无高影响 USD 经济数据发布")
+
+            # ── 影响级别着色 ──────────────────────────────────────────────────
+            _impact_color = {"High": "#EF553B", "Medium": "#FFA500", "Low": "#888888"}
+
+            def _ec_impact_badge(val):
+                c = _impact_color.get(val, "#888")
+                return (
+                    f"<span style='color:{c};font-weight:700'>"
+                    f"{'🔴' if val=='High' else ('🟡' if val=='Medium' else '⚪')} {val}</span>"
+                )
+
+            def _ec_row_style(row):
+                imp = row.get("影响级别", "")
+                if imp == "High":
+                    return ["background-color: rgba(239,85,59,0.10)"] * len(row)
+                if imp == "Medium":
+                    return ["background-color: rgba(255,165,0,0.07)"] * len(row)
+                return [""] * len(row)
+
+            # ── 构建显示 DataFrame ────────────────────────────────────────────
+            _ec_show = _ec_df[["北京时间", "事件名称", "impact", "预期值", "前值"]].copy()
+            _ec_show = _ec_show.rename(columns={"impact": "影响级别"})
+
+            _styled_ec = (
+                _ec_show.style
+                .apply(_ec_row_style, axis=1)
+                .map(
+                    lambda v: (
+                        f"color: {_impact_color.get(v, '#888')}; font-weight: 700"
+                        if v in _impact_color else ""
+                    ),
+                    subset=["影响级别"],
+                )
+            )
+
+            st.dataframe(
+                _styled_ec,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "北京时间": st.column_config.TextColumn("北京时间 (BJT)", width="small"),
+                    "事件名称": st.column_config.TextColumn("事件名称", width="large"),
+                    "影响级别": st.column_config.TextColumn("影响级别", width="small"),
+                    "预期值":   st.column_config.TextColumn("预期值",   width="small"),
+                    "前值":     st.column_config.TextColumn("前值",     width="small"),
+                },
+            )
+
+            st.caption(
+                f"数据来源: Forex Factory · 仅显示 USD 事件 · 共 {len(_ec_show)} 条"
+                f" · 时间已转换为北京时间（ET+13h）· 1小时自动刷新"
+            )
 
 
 if __name__ == "__main__":
