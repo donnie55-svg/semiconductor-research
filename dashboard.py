@@ -2005,16 +2005,17 @@ def main():
     with tab8:
         st.header("📻 实时信号雷达")
         st.caption(
-            f"扫描 {len(ALL_RADAR_TICKERS)} 只核心AI+科技股 · "
+            f"扫描 watchlist 全部 {len(wl)} 只股票 · "
             "同时满足2条以上触发提醒 · 信号含止损/目标/仓位建议"
         )
 
         # ── 控制栏 ────────────────────────────────────────────────────────────
         rc1, rc2, rc3, rc4 = st.columns([2, 2, 1, 1])
         with rc1:
+            _wl_sectors = ["全部"] + sorted(wl["sector"].dropna().unique().tolist())
             radar_sector = st.selectbox(
                 "筛选板块",
-                ["全部"] + list(RADAR_TICKERS_BY_SECTOR.keys()),
+                _wl_sectors,
                 key="radar_sector",
             )
         with rc2:
@@ -2045,10 +2046,10 @@ def main():
         # ── 执行扫描 ─────────────────────────────────────────────────────────
         if scan_btn:
             _wl_tickers = wl["ticker"].tolist()
-            full_pool = list(dict.fromkeys(ALL_RADAR_TICKERS + _wl_tickers))
+            full_pool = list(dict.fromkeys(_wl_tickers))
             scan_tickers = (
                 full_pool if radar_sector == "全部"
-                else RADAR_TICKERS_BY_SECTOR.get(radar_sector, full_pool)
+                else list(dict.fromkeys(wl[wl["sector"] == radar_sector]["ticker"].tolist())) or full_pool
             )
             bt_grades: dict = {}
             if st.session_state.get("bt_flat_df") is not None:
