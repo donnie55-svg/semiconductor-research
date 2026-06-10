@@ -88,3 +88,27 @@ NOW,ServiceNow,AI云/软件,medium
 ZS,Zscaler,AI云/软件,medium
 PANW,Palo Alto Networks,AI云/软件,medium
 WDAY,Workday,AI云/软件,medium
+MOG.B,Moog Inc,航空航天/国防,medium
+CME,CME Group,金融基础设施,large
+LIN,Linde plc,工业气体/化工,large
+SHW,Sherwin-Williams,涂料/建材,large
+CARR,Carrier Global,暖通/工业设备,large
+HAYW,Hayward Holdings,建材/泳池,small
+QXO,QXO Inc,建筑科技,small
+PLD,Prologis,物流REIT,large
+RTX,RTX Corporation,航空航天/国防,large
+LMT,Lockheed Martin,航空航天/国防,large
+GE,GE Aerospace,工业/航空,large
+HON,Honeywell,工业自动化,large
+ICE,Intercontinental Exchange,金融基础设施,large
+SPGI,S&P Global,金融数据,large
+MCO,Moody's Corporation,金融数据,large
+APD,Air Products,工业气体/化工,large
+PPG,PPG Industries,涂料/化工,large
+TT,Trane Technologies,暖通/工业设备,large
+OTIS,Otis Worldwide,工业设备,large
+AMT,American Tower,通信REIT,large
+EQIX,Equinix,数据中心REIT,large
+POOL,Pool Corporation,建材/消费,medium
+VMC,Vulcan Materials,建材,large
+MLM,Martin Marietta Materials,建材,large
