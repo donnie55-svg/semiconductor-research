@@ -283,7 +283,7 @@ def load_watchlist() -> pd.DataFrame:
                          "CEG", "VST", "NNE", "SMR", "OKLO",
                          "ISRG", "ABB", "ACHR",
                          "APLD", "CRWV", "IREN", "VRT", "SMCI",
-                         "JNJ", "V", "MA", "PFE"],
+                         "JNJ", "V", "MA", "PFE", "MMM"],
             "name":     ["NVIDIA", "AMD", "Broadcom", "Micron", "TSMC",
                          "Applied Materials", "Lam Research", "KLA Corp",
                          "ASML", "Analog Devices", "Marvell Tech", "Texas Instruments",
@@ -307,7 +307,7 @@ def load_watchlist() -> pd.DataFrame:
                          "Intuitive Surgical", "ABB Ltd", "Archer Aviation",
                          "Applied Digital", "CoreWeave", "IREN Limited",
                          "Vertiv Holdings", "Super Micro Computer",
-                         "Johnson & Johnson", "Visa", "Mastercard", "Pfizer"],
+                         "Johnson & Johnson", "Visa", "Mastercard", "Pfizer", "3M Company"],
             "sector":   [_DEFAULT_SECTOR] * 14 +
                         ["空运&旅游"] * 14 +
                         ["中概股ADR"] * 9 +
@@ -316,9 +316,9 @@ def load_watchlist() -> pd.DataFrame:
                         ["能源/核能"] * 5 +
                         ["机器人/自动化"] * 3 +
                         ["AI基础设施"] * 5 +
-                        ["防御对冲"] * 4,
+                        ["防御对冲"] * 5,
             "priority": ["high"] * 37 + ["medium"] * 8 + ["medium"] * 15 +
-                        ["medium"] * 5 + ["medium"] * 3 + ["medium"] * 5 + ["medium"] * 4,
+                        ["medium"] * 5 + ["medium"] * 3 + ["medium"] * 5 + ["medium"] * 5,
         })
     # 兼容旧格式：补充缺失的 sector 列
     if "sector" not in df.columns:
@@ -358,6 +358,7 @@ def load_watchlist() -> pd.DataFrame:
         ("V",    "Visa",                "防御对冲", "medium"),
         ("MA",   "Mastercard",          "防御对冲", "medium"),
         ("PFE",  "Pfizer",              "防御对冲", "medium"),
+        ("MMM",  "3M Company",          "防御对冲", "medium"),
         ("LLY",  "礼来 Eli Lilly",      "医药/生物科技", "medium"),
         ("NVO",  "诺和诺德 Novo Nordisk","医药/生物科技", "medium"),
         ("MRK",  "默克 Merck",          "医药/生物科技", "medium"),
