@@ -764,10 +764,11 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14 = st.tabs([
         "📊 市场概览", "💰 估值分析", "🔗 供应链追踪", "📈 财报分析",
         "📰 新闻监控", "📡 财报雷达", "🎯 策略回测", "📻 实时雷达",
         "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达", "📅 经济日历", "💼 持仓跟踪",
+        "📊 估值排行榜",
     ])
 
     # ════════════════════════════════════════════════════════════════════════════
@@ -3786,6 +3787,209 @@ def main():
                 f"${_total_pnl:+,.0f}" if _total_pnl is not None else "N/A",
                 delta=_pnl_delta,
             )
+
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # TAB 14  估值排行榜
+    # ════════════════════════════════════════════════════════════════════════════
+    with tab14:
+        import yfinance as _yf_val
+
+        st.header("📊 估值排行榜")
+        st.caption(
+            "批量扫描 watchlist 所有股票，综合 PEG / FPE / EPS增长率 / 分析师目标价计算估值吸引力评分（满分100）"
+        )
+
+        # ── 评分辅助 ──────────────────────────────────────────────────────────
+        def _vr_safe(v):
+            if v is None:
+                return None
+            try:
+                f = float(v)
+                return None if pd.isna(f) else f
+            except (TypeError, ValueError):
+                return None
+
+        def _vr_peg_score(peg) -> int:
+            v = _vr_safe(peg)
+            if v is None or v <= 0:
+                return 15
+            if v < 0.5:  return 30
+            if v < 1.0:  return 25
+            if v < 1.5:  return 18
+            if v < 2.0:  return 10
+            return 0
+
+        def _vr_fpe_pe_score(fpe, pe) -> int:
+            f = _vr_safe(fpe)
+            p = _vr_safe(pe)
+            if f is None or p is None or p <= 0 or f <= 0:
+                return 12
+            if f >= p:
+                return 5
+            diff = (p - f) / p
+            if diff > 0.30: return 25
+            if diff > 0.10: return 18
+            return 12
+
+        def _vr_eps_score(growth) -> int:
+            v = _vr_safe(growth)
+            if v is None:
+                return 12
+            g = v * 100
+            if g > 50:  return 25
+            if g > 20:  return 20
+            if g > 10:  return 15
+            if g >= 0:  return 8
+            return 0
+
+        def _vr_upside_score(target, current) -> int:
+            t = _vr_safe(target)
+            c = _vr_safe(current)
+            if t is None or c is None or c <= 0:
+                return 10
+            up = (t - c) / c * 100
+            if up > 40:  return 20
+            if up > 20:  return 15
+            if up > 10:  return 10
+            if up >= 0:  return 5
+            return 0
+
+        def _vr_conclusion(score: int) -> str:
+            if score >= 90: return "🔥 极度低估"
+            if score >= 75: return "✅ 值得关注"
+            if score >= 60: return "ℹ️ 估值合理"
+            if score >= 40: return "⚠️ 估值偏高"
+            return "❌ 高估风险"
+
+        def _vr_score_style(val):
+            if pd.isna(val):
+                return ""
+            if val >= 75: return "color: #4CAF50; font-weight: bold"
+            if val >= 60: return "color: #9E9E9E"
+            if val >= 40: return "color: #FF9800; font-weight: bold"
+            return "color: #F44336; font-weight: bold"
+
+        # ── 控制栏 ────────────────────────────────────────────────────────────
+        _vr_col1, _vr_col2, _vr_col3 = st.columns([2, 1, 1])
+        with _vr_col1:
+            _vr_sectors = ["全部"] + sorted(wl["sector"].dropna().unique().tolist())
+            vr_sector = st.selectbox("筛选板块", _vr_sectors, key="vr_sector")
+        with _vr_col2:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            vr_scan_btn = st.button(
+                "🔍 开始扫描", type="primary", use_container_width=True, key="vr_scan"
+            )
+        with _vr_col3:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("🗑️ 清除缓存", use_container_width=True, key="vr_clear"):
+                st.session_state.pop("vr_results", None)
+                st.session_state.pop("vr_scan_time", None)
+                st.rerun()
+
+        # ── 扫描 ─────────────────────────────────────────────────────────────
+        if vr_scan_btn:
+            _vr_tickers = (
+                wl["ticker"].tolist() if vr_sector == "全部"
+                else wl[wl["sector"] == vr_sector]["ticker"].tolist()
+            )
+            _vr_results = []
+            _vr_prog = st.progress(0, text="准备扫描…")
+            _vr_n = len(_vr_tickers)
+
+            for _vr_i, _vr_tk in enumerate(_vr_tickers):
+                _vr_prog.progress(
+                    (_vr_i + 1) / _vr_n,
+                    text=f"扫描 {_vr_tk}（{_vr_i + 1}/{_vr_n}）"
+                )
+                try:
+                    _vr_info = _yf_val.Ticker(_vr_tk).info
+                    _vr_pe     = _vr_info.get("trailingPE")
+                    _vr_fpe    = _vr_info.get("forwardPE")
+                    _vr_peg    = _vr_info.get("trailingPegRatio")
+                    _vr_epsg   = _vr_info.get("earningsGrowth")
+                    _vr_target = _vr_info.get("targetMeanPrice")
+                    _vr_price  = _vr_info.get("currentPrice") or _vr_info.get("regularMarketPrice")
+
+                    _vr_row = wl[wl["ticker"] == _vr_tk]
+                    _vr_sec = _vr_row["sector"].values[0] if not _vr_row.empty else "N/A"
+
+                    _s_peg  = _vr_peg_score(_vr_peg)
+                    _s_fpe  = _vr_fpe_pe_score(_vr_fpe, _vr_pe)
+                    _s_eps  = _vr_eps_score(_vr_epsg)
+                    _s_up   = _vr_upside_score(_vr_target, _vr_price)
+                    _total  = _s_peg + _s_fpe + _s_eps + _s_up
+
+                    _pe_v   = _vr_safe(_vr_pe)
+                    _fpe_v  = _vr_safe(_vr_fpe)
+                    _peg_v  = _vr_safe(_vr_peg)
+                    _epsg_v = _vr_safe(_vr_epsg)
+                    _t_v    = _vr_safe(_vr_target)
+                    _c_v    = _vr_safe(_vr_price)
+
+                    _upside = (
+                        round((_t_v - _c_v) / _c_v * 100, 1)
+                        if _t_v is not None and _c_v and _c_v > 0
+                        else None
+                    )
+
+                    _vr_results.append({
+                        "代码":       _vr_tk,
+                        "板块":       _vr_sec,
+                        "综合评分":   _total,
+                        "结论":       _vr_conclusion(_total),
+                        "PEG":        round(_peg_v, 2)  if _peg_v  is not None else None,
+                        "FPE":        round(_fpe_v, 1)  if _fpe_v  is not None else None,
+                        "EPS增长率%": round(_epsg_v * 100, 1) if _epsg_v is not None else None,
+                        "上行空间%":  _upside,
+                        "PE":         round(_pe_v, 1)   if _pe_v   is not None else None,
+                    })
+                except Exception:
+                    _vr_row = wl[wl["ticker"] == _vr_tk]
+                    _vr_sec = _vr_row["sector"].values[0] if not _vr_row.empty else "N/A"
+                    _vr_results.append({
+                        "代码": _vr_tk, "板块": _vr_sec, "综合评分": 0,
+                        "结论": "❌ 数据获取失败",
+                        "PEG": None, "FPE": None, "EPS增长率%": None, "上行空间%": None, "PE": None,
+                    })
+
+            _vr_prog.empty()
+            st.session_state["vr_results"]   = _vr_results
+            st.session_state["vr_scan_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.rerun()
+
+        # ── 展示结果 ─────────────────────────────────────────────────────────
+        if st.session_state.get("vr_results"):
+            _vr_scan_ts = st.session_state.get("vr_scan_time", "")
+            st.caption(f"上次扫描：{_vr_scan_ts}")
+
+            _vr_df = pd.DataFrame(st.session_state["vr_results"])
+            _vr_df = _vr_df.sort_values("综合评分", ascending=False).reset_index(drop=True)
+
+            _vr_styled = (
+                _vr_df.style
+                .map(_vr_score_style, subset=["综合评分"])
+                .format({
+                    "综合评分":   "{:.0f}",
+                    "PEG":        lambda x: f"{x:.2f}" if pd.notna(x) else "N/A",
+                    "FPE":        lambda x: f"{x:.1f}" if pd.notna(x) else "N/A",
+                    "EPS增长率%": lambda x: f"{x:+.1f}%" if pd.notna(x) else "N/A",
+                    "上行空间%":  lambda x: f"{x:+.1f}%" if pd.notna(x) else "N/A",
+                    "PE":         lambda x: f"{x:.1f}" if pd.notna(x) else "N/A",
+                }, na_rep="N/A")
+            )
+            st.dataframe(_vr_styled, use_container_width=True, hide_index=True)
+
+            # ── 汇总统计 ────────────────────────────────────────────────────
+            st.divider()
+            _vrc1, _vrc2, _vrc3, _vrc4, _vrc5 = st.columns(5)
+            _vrc1.metric("🔥 极度低估", sum(1 for r in st.session_state["vr_results"] if r["综合评分"] >= 90))
+            _vrc2.metric("✅ 值得关注", sum(1 for r in st.session_state["vr_results"] if 75 <= r["综合评分"] < 90))
+            _vrc3.metric("ℹ️ 估值合理", sum(1 for r in st.session_state["vr_results"] if 60 <= r["综合评分"] < 75))
+            _vrc4.metric("⚠️ 估值偏高", sum(1 for r in st.session_state["vr_results"] if 40 <= r["综合评分"] < 60))
+            _vrc5.metric("❌ 高估风险", sum(1 for r in st.session_state["vr_results"] if r["综合评分"] < 40))
+        else:
+            st.info("点击「开始扫描」获取 watchlist 所有股票的估值评分排行。")
 
 
 if __name__ == "__main__":
