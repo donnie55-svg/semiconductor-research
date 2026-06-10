@@ -2912,6 +2912,111 @@ def main():
                 st.divider()
 
                 # ════════════════════════════════════════════════════════════
+                # 📐 估值快照
+                # ════════════════════════════════════════════════════════════
+                st.subheader("📐 估值快照")
+
+                _trailing_pe  = sq_info.get("trailingPE")
+                _forward_pe   = sq_info.get("forwardPE")
+                _peg          = sq_info.get("trailingPegRatio")
+                _eps_growth   = sq_info.get("earningsGrowth")
+                _industry     = sq_info.get("industry", "")
+
+                _is_tech = any(k in _industry for k in ("Semiconductor", "Technology"))
+
+                def _pe_color(val):
+                    if val is None or (isinstance(val, float) and (val != val)):
+                        return "#888888"
+                    hi, lo = (35, 20) if _is_tech else (25, 15)
+                    if val > hi:   return "#EF553B"
+                    if val > lo:   return "#FFA500"
+                    return "#00CC96"
+
+                def _fmt_pe(val):
+                    if val is None or (isinstance(val, float) and (val != val)):
+                        return "N/A"
+                    return f"{val:.1f}x"
+
+                _pe_c   = _pe_color(_trailing_pe)
+                _fpe_c  = _pe_color(_forward_pe)
+                _peg_c  = ("#00CC96" if (_peg is not None and _peg == _peg and _peg < 1)
+                           else "#EF553B" if (_peg is not None and _peg == _peg and _peg > 2)
+                           else "#888888")
+
+                _eps_pct = (_eps_growth * 100) if (_eps_growth is not None and _eps_growth == _eps_growth) else None
+                _eps_c   = ("#EF553B" if (_eps_pct is not None and _eps_pct < 0)
+                            else "#00CC96" if (_eps_pct is not None and _eps_pct > 15)
+                            else "#90EE90" if (_eps_pct is not None)
+                            else "#888888")
+
+                _fpe_trend = None
+                _fpe_delta = None
+                if (_forward_pe is not None and _forward_pe == _forward_pe and
+                        _trailing_pe is not None and _trailing_pe == _trailing_pe):
+                    if _forward_pe < _trailing_pe:
+                        _fpe_trend = "▲ 盈利增长中"
+                        _fpe_delta_color = "normal"
+                    else:
+                        _fpe_trend = "▼ 盈利放缓"
+                        _fpe_delta_color = "inverse"
+                else:
+                    _fpe_delta_color = "off"
+
+                _vs_c1, _vs_c2, _vs_c3, _vs_c4 = st.columns(4)
+
+                _vs_c1.markdown(
+                    f"<div style='text-align:center'>"
+                    f"<div style='font-size:0.85rem;color:#888'>PE（TTM）</div>"
+                    f"<div style='font-size:1.8rem;font-weight:700;color:{_pe_c}'>{_fmt_pe(_trailing_pe)}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+                _fpe_label = _fmt_pe(_forward_pe)
+                _fpe_note  = (f"<span style='color:#00CC96;font-size:0.75rem'>{_fpe_trend}</span>"
+                              if _fpe_trend == "▲ 盈利增长中"
+                              else f"<span style='color:#FFA500;font-size:0.75rem'>{_fpe_trend}</span>"
+                              if _fpe_trend is not None else "")
+                _vs_c2.markdown(
+                    f"<div style='text-align:center'>"
+                    f"<div style='font-size:0.85rem;color:#888'>Forward PE</div>"
+                    f"<div style='font-size:1.8rem;font-weight:700;color:{_fpe_c}'>{_fpe_label}</div>"
+                    f"<div style='margin-top:2px'>{_fpe_note}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+                _peg_str = (f"{_peg:.2f}" if (_peg is not None and _peg == _peg and _peg > 0) else "N/A")
+                _vs_c3.markdown(
+                    f"<div style='text-align:center'>"
+                    f"<div style='font-size:0.85rem;color:#888'>PEG</div>"
+                    f"<div style='font-size:1.8rem;font-weight:700;color:{_peg_c}'>{_peg_str}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+                _eps_str = (f"{_eps_pct:+.1f}%" if _eps_pct is not None else "N/A")
+                _vs_c4.markdown(
+                    f"<div style='text-align:center'>"
+                    f"<div style='font-size:0.85rem;color:#888'>EPS增长率</div>"
+                    f"<div style='font-size:1.8rem;font-weight:700;color:{_eps_c}'>{_eps_str}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+                # 结论判断
+                if _eps_pct is not None and _eps_pct < 0:
+                    st.warning("⚠️ EPS增长率为负，基本面存在恶化风险，谨慎")
+                elif _peg is not None and _peg == _peg and _peg > 2:
+                    st.warning(f"⚠️ PEG>{_peg:.1f}，估值已透支增长，注意泡沫风险")
+                elif (_forward_pe is not None and _trailing_pe is not None and
+                      _forward_pe == _forward_pe and _trailing_pe == _trailing_pe and
+                      _forward_pe < _trailing_pe and _peg is not None and _peg == _peg and _peg < 1.5):
+                    st.success("✅ FPE低于PE且PEG合理，盈利增长支撑估值，基本面健康")
+                elif (_forward_pe is not None and _trailing_pe is not None and
+                      _forward_pe == _forward_pe and _trailing_pe == _trailing_pe and
+                      _forward_pe < _trailing_pe):
+                    st.info("ℹ️ 盈利在增长但PEG偏高，估值中性")
+                else:
+                    st.info("ℹ️ 估值处于正常区间，结合技术面判断入场时机")
+
+                st.caption("数据来源：yfinance | FPE/PEG基于分析师预测，仅供参考 | 行业阈值为经验值，非绝对标准")
+
+                st.divider()
+
+                # ════════════════════════════════════════════════════════════
                 # 🏆 巴菲特价值评分卡
                 # ════════════════════════════════════════════════════════════
                 st.subheader("🏆 巴菲特价值评分")
