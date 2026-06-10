@@ -133,6 +133,21 @@ def c_radar_signals(tickers_key: str, backtest_grades_key: str = ""):
     except Exception:
         return [], {"state":"unknown","emoji":"⚪","label":"扫描失败"}, None
 
+@st.cache_data(ttl=3600)
+def c_radar_valuation(ticker: str) -> dict:
+    """单股估值数据（1小时缓存，不阻塞信号扫描）"""
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker).info
+        return {
+            "forwardPE":        info.get("forwardPE"),
+            "trailingPE":       info.get("trailingPE"),
+            "trailingPegRatio": info.get("trailingPegRatio"),
+            "earningsGrowth":   info.get("earningsGrowth"),
+        }
+    except Exception:
+        return {}
+
 def _build_static_econ_calendar() -> pd.DataFrame:
     """Hardcoded weekly template of recurring USD economic events (ET→BJT +12h)."""
     from datetime import timedelta
@@ -2011,7 +2026,7 @@ def main():
         )
 
         # ── 控制栏 ────────────────────────────────────────────────────────────
-        rc1, rc2, rc3, rc4 = st.columns([2, 2, 1, 1])
+        rc1, rc2, rc3, rc4, rc5 = st.columns([2, 2, 1, 1, 1.5])
         with rc1:
             _wl_sectors = ["全部"] + sorted(wl["sector"].dropna().unique().tolist())
             radar_sector = st.selectbox(
@@ -2032,6 +2047,9 @@ def main():
         with rc4:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
             auto_30 = st.toggle("⏰ 30秒刷新", value=False, key="radar_auto")
+        with rc5:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            fundam_filter = st.toggle("🔍 基本面过滤", value=True, key="radar_fundam_filter")
 
         # ── 自动刷新逻辑 ─────────────────────────────────────────────────────
         import time as _time
@@ -2123,28 +2141,74 @@ def main():
                 # 更新顶部状态栏各级计数
                 st.session_state["radar_signals"] = sigs
 
-                # ── 信号汇总表（含信号等级列）────────────────────────────────
+                # ── 获取信号股票的估值数据（1h缓存，不阻塞扫描）────────────────
+                _val_map = {s["ticker"]: c_radar_valuation(s["ticker"]) for s in sigs}
+
+                def _safe_num(v):
+                    if v is None:
+                        return None
+                    try:
+                        f = float(v)
+                        return None if pd.isna(f) else f
+                    except (TypeError, ValueError):
+                        return None
+
+                # ── 基本面过滤 ────────────────────────────────────────────────
+                def _fundam_ok(ticker: str) -> bool:
+                    v = _val_map.get(ticker, {})
+                    eps_g = _safe_num(v.get("earningsGrowth"))
+                    peg   = _safe_num(v.get("trailingPegRatio"))
+                    fpe   = _safe_num(v.get("forwardPE"))
+                    pe    = _safe_num(v.get("trailingPE"))
+                    if eps_g is not None and eps_g < 0:
+                        return False
+                    if peg is not None and peg > 2:
+                        return False
+                    if fpe is not None and pe is not None and fpe > pe:
+                        return False
+                    return True
+
+                _total_z = len(sigs)
+                if fundam_filter:
+                    _sigs_for_table = [s for s in sigs if _fundam_ok(s["ticker"])]
+                    _hidden_x = _total_z - len(_sigs_for_table)
+                    st.caption(
+                        f"已过滤 **{_hidden_x}** 只基本面不达标的股票，"
+                        f"显示 **{len(_sigs_for_table)}** / 总计 **{_total_z}** 只"
+                    )
+                else:
+                    _sigs_for_table = sigs
+                    st.caption(f"基本面过滤已关闭，显示全部 **{_total_z}** 只信号")
+
+                # ── 信号汇总表（含信号等级 + 估值列）────────────────────────
                 def _level_badge(lv: str) -> str:
                     return {"A+": "🔴 A+", "A": "🟠 A", "B": "🟡 B", "C": "⚪ C"}.get(lv, lv)
 
                 sig_df = pd.DataFrame([{
-                    "信号等级": _level_badge(s.get("signal_level", "C")),
-                    "股票":    s["ticker"],
-                    "板块":    s["sector"],
-                    "价格":    s["price"],
-                    "1日涨跌%": s["change_1d_pct"],
-                    "信号强度": s["score"],
-                    "条件数":  len(s["triggered"]),
-                    "触发条件": "·".join(s["triggered"]),
-                    "策略":    s["strategy"],
-                    "止损%":   s["stop_pct"],
-                    "目标%":   s["target_pct"],
-                    "R:R":     s["rr_ratio"],
-                    "评级":    s["grade_info"],
-                    "极端风险": "⚡" if s["extreme_flags"] else "✅",
-                } for s in sigs])
+                    "信号等级":   _level_badge(s.get("signal_level", "C")),
+                    "股票":       s["ticker"],
+                    "板块":       s["sector"],
+                    "价格":       s["price"],
+                    "1日涨跌%":   s["change_1d_pct"],
+                    "信号强度":   s["score"],
+                    "FPE":        _safe_num(_val_map.get(s["ticker"], {}).get("forwardPE")),
+                    "PEG":        _safe_num(_val_map.get(s["ticker"], {}).get("trailingPegRatio")),
+                    "EPS增长率%": (
+                        round(_safe_num(_val_map.get(s["ticker"], {}).get("earningsGrowth")) * 100, 1)
+                        if _safe_num(_val_map.get(s["ticker"], {}).get("earningsGrowth")) is not None
+                        else None
+                    ),
+                    "条件数":     len(s["triggered"]),
+                    "触发条件":   "·".join(s["triggered"]),
+                    "策略":       s["strategy"],
+                    "止损%":      s["stop_pct"],
+                    "目标%":      s["target_pct"],
+                    "R:R":        s["rr_ratio"],
+                    "评级":       s["grade_info"],
+                    "极端风险":   "⚡" if s["extreme_flags"] else "✅",
+                } for s in _sigs_for_table])
 
-                st.subheader(f"📊 信号汇总表（{len(sigs)} 只）")
+                st.subheader(f"📊 信号汇总表（{len(_sigs_for_table)} 只）")
                 _LEVEL_COLORS = {"🔴 A+": "#00CC96", "🟠 A": "#FFA500",
                                  "🟡 B": "#FFD700",  "⚪ C": "#888888"}
 
@@ -2152,15 +2216,36 @@ def main():
                     c = _LEVEL_COLORS.get(val, "")
                     return f"color:{c};font-weight:700" if c else ""
 
+                def _peg_color(val):
+                    v = _safe_num(val)
+                    if v is None: return "color:#888888"
+                    if v < 1:    return "color:#4CAF50;font-weight:700"
+                    if v <= 2:   return "color:#9E9E9E"
+                    return "color:#F44336;font-weight:700"
+
+                def _eps_color(val):
+                    v = _safe_num(val)
+                    if v is None: return "color:#888888"
+                    return "color:#4CAF50;font-weight:700" if v >= 0 else "color:#F44336;font-weight:700"
+
                 fmt_sdf = {
-                    "价格":"${:.2f}","1日涨跌%":"{:+.2f}%",
-                    "信号强度":"{:.0f}","止损%":"{:.1f}%","目标%":"{:.1f}%","R:R":"{:.2f}",
+                    "价格":       "${:.2f}",
+                    "1日涨跌%":   "{:+.2f}%",
+                    "信号强度":   "{:.0f}",
+                    "FPE":        lambda x: f"{x:.1f}"   if pd.notna(x) else "—",
+                    "PEG":        lambda x: f"{x:.2f}"   if pd.notna(x) else "—",
+                    "EPS增长率%": lambda x: f"{x:+.1f}%" if pd.notna(x) else "—",
+                    "止损%":      "{:.1f}%",
+                    "目标%":      "{:.1f}%",
+                    "R:R":        "{:.2f}",
                 }
                 styled_sdf = (
                     sig_df.style
-                    .format({k:v for k,v in fmt_sdf.items() if k in sig_df.columns}, na_rep="N/A")
-                    .map(sign_color, subset=["1日涨跌%"] if "1日涨跌%" in sig_df.columns else [])
-                    .map(_level_color, subset=["信号等级"] if "信号等级" in sig_df.columns else [])
+                    .format({k: v for k, v in fmt_sdf.items() if k in sig_df.columns}, na_rep="—")
+                    .map(sign_color,    subset=["1日涨跌%"]   if "1日涨跌%"   in sig_df.columns else [])
+                    .map(_level_color,  subset=["信号等级"]   if "信号等级"   in sig_df.columns else [])
+                    .map(_peg_color,    subset=["PEG"]         if "PEG"         in sig_df.columns else [])
+                    .map(_eps_color,    subset=["EPS增长率%"] if "EPS增长率%" in sig_df.columns else [])
                 )
                 st.dataframe(styled_sdf, use_container_width=True, hide_index=True)
 
@@ -2185,9 +2270,9 @@ def main():
                 except Exception:
                     pass
 
-                # ── 按用户选择的信号等级过滤 ──────────────────────────────────
+                # ── 按用户选择的信号等级过滤（在基本面过滤后的池里再过滤）────────
                 _allowed_levels = set(show_levels) if show_levels else {"A+", "A", "B", "C"}
-                _filtered_sigs  = [s for s in sigs if s.get("signal_level", "C") in _allowed_levels]
+                _filtered_sigs  = [s for s in _sigs_for_table if s.get("signal_level", "C") in _allowed_levels]
 
                 _aplus_sigs = [s for s in _filtered_sigs if s.get("signal_level") == "A+"]
                 _a_sigs     = [s for s in _filtered_sigs if s.get("signal_level") == "A"]
