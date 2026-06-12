@@ -24,7 +24,7 @@ RADAR_TICKERS_BY_SECTOR: Dict[str, List[str]] = {
     "ETF":              ["SMH","SOXX","SPY","QQQ"],
     "医药/生物科技":    ["LLY","NVO","JNJ","MRK","ABBV","PFE","AMGN","GILD","MRNA"],
     "能源/核能":        ["CEG","VST","NNE","SMR","OKLO"],
-    "AI基础设施":       ["VRT","SMCI","APLD","CRWV","IREN"],
+    "AI基础设施":       ["VRT","SMCI","APLD","CRWV","IREN","KULR","IONQ","DELL"],
     "机器人/自动化":    ["ISRG","ABB","ACHR"],
     "防御对冲":         ["V","MA","JNJ","PFE"],
     "消费零售":         ["WMT","AMZN","COST","TGT","HD","NKE","MCD","SBUX","KO"],

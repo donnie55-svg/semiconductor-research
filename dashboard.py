@@ -422,6 +422,154 @@ CHART_LAYOUT = dict(
     yaxis=dict(showgrid=True, gridcolor="rgba(128,128,128,0.15)"),
 )
 
+# ── 板块ETF映射表 ──────────────────────────────────────────────────────────────
+SECTOR_ETF_MAP = {
+    "半导体/AI芯片": {
+        "etf": "SMH",
+        "stocks": ["NVDA","AMD","MU","CRDO","STM","AVGO","MRVL","QCOM","TSM","INTC","AMAT","LRCX","KLAC"]
+    },
+    "AI基础设施": {
+        "etf": "GRID",
+        "stocks": ["VRT","SMCI","KULR","APLD","CRWV","IONQ","DELL"]
+    },
+    "太空": {
+        "etf": "NASA",
+        "stocks": ["ASTS","RKLB","LUNR","PL","IRDM","BKSY"]
+    },
+    "航空/制造": {
+        "etf": "JETS",
+        "stocks": ["DAL","UAL","AAL","ALK","BA","TDG","LUV","HWM","SPR"]
+    },
+    "核能/新能源": {
+        "etf": "NLR",
+        "stocks": ["NNE","SMR","CEG","VST","ETR"]
+    },
+    "机器人/自动化": {
+        "etf": "ROBT",
+        "stocks": ["ACHR","OKLO","JOBY","RDDT","ACMR"]
+    },
+    "消费品/饮料": {
+        "etf": "XLP",
+        "stocks": ["KO","PEP","CELH","MNST","FIZZ"]
+    },
+    "零售/消费": {
+        "etf": "XRT",
+        "stocks": ["DLTR","WYNN","COST","TGT","MCD"]
+    },
+    "生物科技": {
+        "etf": "XBI",
+        "stocks": ["MRNA","RXRX","NTLA"]
+    },
+    "金融": {
+        "etf": "XLF",
+        "stocks": ["SOFI","QXO","JPM","GS","V","MA"]
+    },
+    "软件/云": {
+        "etf": "XLK",
+        "stocks": ["SNOW","ZS","NOW","PLTR","CRM","WDAY"]
+    },
+    "黄金/大宗": {
+        "etf": "GLD",
+        "stocks": ["GLD"]
+    },
+    "AI数据中心/REIT": {
+        "etf": "XLRE",
+        "stocks": ["EQIX","AMT","IRON"]
+    },
+    "网络安全": {
+        "etf": "HACK",
+        "stocks": ["CRWD","PANW","S"]
+    },
+    "储能/电池": {
+        "etf": "ICLN",
+        "stocks": ["TSLA","ENPH","FSLR"]
+    },
+    "医疗健康": {
+        "etf": "XLV",
+        "stocks": ["UNH","ABBV","LLY"]
+    },
+    "工业/国防": {
+        "etf": "XLI",
+        "stocks": ["LMT","RTX","NOC"]
+    },
+    "铜/稀土材料": {
+        "etf": "COPX",
+        "stocks": ["FCX","MP","UUUU"]
+    },
+}
+
+
+def detect_sector_alerts(signals: list, min_score: int = 60, min_count: int = 2) -> list:
+    """Return triggered sector alerts from current signal list.
+
+    Each alert dict: {sector, etf, triggered_stocks, avg_score, trigger_time}
+    where triggered_stocks is sorted descending by score.
+    """
+    score_map = {s["ticker"].upper().strip(): s["score"] for s in signals if s.get("score", 0) >= min_score}
+    trigger_time = datetime.now().strftime("%H:%M:%S")
+    alerts = []
+    for sector_name, info in SECTOR_ETF_MAP.items():
+        hits = [
+            {"ticker": t, "score": score_map[t]}
+            for t in info["stocks"]
+            if t in score_map
+        ]
+        if len(hits) >= min_count:
+            hits.sort(key=lambda x: x["score"], reverse=True)
+            avg_score = round(sum(h["score"] for h in hits) / len(hits), 1)
+            alerts.append({
+                "sector": sector_name,
+                "etf": info["etf"],
+                "triggered_stocks": hits,
+                "avg_score": avg_score,
+                "trigger_time": trigger_time,
+            })
+    alerts.sort(key=lambda x: x["avg_score"], reverse=True)
+    return alerts
+
+
+def render_sector_alerts(alerts: list) -> None:
+    """Render sector linkage alert cards above the signal summary table."""
+    st.write(f"DEBUG: 检测到{len(alerts)}个板块预警")
+    if not alerts:
+        return
+    st.markdown(
+        "<div style='background:linear-gradient(90deg,#3d1a00,#1a0a00);"
+        "border:2px solid #FF6B00;border-radius:10px;padding:12px 16px;margin-bottom:16px'>"
+        "<span style='color:#FF8C00;font-weight:700;font-size:1.1rem'>🔥 板块联动预警</span>"
+        f"<span style='color:#aaa;font-size:0.85rem;margin-left:12px'>"
+        f"共 {len(alerts)} 个板块触发联动</span></div>",
+        unsafe_allow_html=True,
+    )
+    cols_per_row = 3
+    for i in range(0, len(alerts), cols_per_row):
+        row_alerts = alerts[i:i + cols_per_row]
+        cols = st.columns(cols_per_row)
+        for j, alert in enumerate(row_alerts):
+            stocks_str = "  ".join(
+                f"<b style='color:#FFD700'>{h['ticker']}</b>"
+                f"<span style='color:#FF8C00'>({h['score']:.0f})</span>"
+                for h in alert["triggered_stocks"]
+            )
+            with cols[j]:
+                st.markdown(
+                    f"<div style='background:#1a0d00;border:2px solid #FF4500;"
+                    f"border-radius:8px;padding:12px 14px;margin-bottom:8px'>"
+                    f"<div style='color:#FF4500;font-weight:700;font-size:1rem;margin-bottom:6px'>"
+                    f"🔥 板块联动预警 — {alert['sector']}</div>"
+                    f"<div style='font-size:0.85rem;margin-bottom:4px'>"
+                    f"<span style='color:#aaa'>触发标的：</span>{stocks_str}</div>"
+                    f"<div style='font-size:0.82rem;color:#aaa;margin-bottom:2px'>"
+                    f"建议关注ETF：<b style='color:#00BFFF'>{alert['etf']}</b></div>"
+                    f"<div style='font-size:0.82rem;color:#aaa;margin-bottom:2px'>"
+                    f"板块平均信号强度：<b style='color:#FFA500'>{alert['avg_score']}</b></div>"
+                    f"<div style='font-size:0.80rem;color:#777'>"
+                    f"触发时间：{alert['trigger_time']}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+
 # ── Legacy: kept for reference only, not called ───────────────────────────────
 _MIN_RELIABLE = 15  # legacy constant still referenced in dead-code below
 
@@ -2126,6 +2274,10 @@ def main():
 
             st.divider()
 
+            # ── 板块联动预警（outer else 层，sigs 有无均执行）─────────────────
+            _sector_alerts = detect_sector_alerts(sigs, min_score=45)
+            render_sector_alerts(_sector_alerts)
+
             if not sigs:
                 st.info("✅ 当前无股票满足信号条件（已扫描所选板块全部标的）")
             else:
@@ -2179,6 +2331,50 @@ def main():
                 else:
                     _sigs_for_table = sigs
                     st.caption(f"基本面过滤已关闭，显示全部 **{_total_z}** 只信号")
+
+                # ── 板块联动诊断（可折叠，帮助排查未触发原因）────────────────
+                with st.expander("🔍 板块联动诊断（当前扫描状态）", expanded=True):
+                    _diag_min = 45
+                    # 原始 ticker 格式检查（排查大小写/空格）
+                    st.markdown("**sigs 原始 ticker 值（含格式）**")
+                    st.code(repr([s["ticker"] for s in sigs]))
+                    _diag_map = {s["ticker"].upper().strip(): s["score"] for s in sigs}
+                    # 所有信号得分表
+                    st.markdown("**当前信号得分（≥45 计入板块联动）**")
+                    _diag_rows = [
+                        {
+                            "股票": t,
+                            "得分": sc,
+                            "达标": "✅" if sc >= _diag_min else "❌",
+                        }
+                        for t, sc in sorted(_diag_map.items(), key=lambda x: -x[1])
+                    ]
+                    if _diag_rows:
+                        st.dataframe(pd.DataFrame(_diag_rows), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("无信号数据")
+
+                    st.markdown("**各板块命中情况**")
+                    _diag_sector_rows = []
+                    for _sn, _si in SECTOR_ETF_MAP.items():
+                        _hits = [
+                            f"{t}({_diag_map[t]}✅)" if _diag_map.get(t, 0) >= _diag_min
+                            else f"{t}({_diag_map.get(t,'-')}❌)"
+                            for t in _si["stocks"] if t in _diag_map
+                        ]
+                        _pass = sum(1 for t in _si["stocks"] if _diag_map.get(t, 0) >= _diag_min)
+                        _diag_sector_rows.append({
+                            "板块": _sn,
+                            "ETF": _si["etf"],
+                            "达标/扫描": f"{_pass}/{len(_hits)}",
+                            "触发": "🔥 是" if _pass >= 2 else ("—" if _hits else "未扫描"),
+                            "标的详情": "  ".join(_hits) if _hits else "—",
+                        })
+                    st.dataframe(
+                        pd.DataFrame(_diag_sector_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
                 # ── 信号汇总表（含信号等级 + 估值列）────────────────────────
                 def _level_badge(lv: str) -> str:
