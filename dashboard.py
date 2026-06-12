@@ -499,7 +499,7 @@ SECTOR_ETF_MAP = {
 }
 
 
-def detect_sector_alerts(signals: list, min_score: int = 60, min_count: int = 2) -> list:
+def detect_sector_alerts(signals: list, min_score: int = 60, min_count: int = 3) -> list:
     """Return triggered sector alerts from current signal list.
 
     Each alert dict: {sector, etf, triggered_stocks, avg_score, trigger_time}
@@ -2275,7 +2275,7 @@ def main():
             st.divider()
 
             # ── 板块联动预警（outer else 层，sigs 有无均执行）─────────────────
-            _sector_alerts = detect_sector_alerts(sigs, min_score=45)
+            _sector_alerts = detect_sector_alerts(sigs, min_score=45, min_count=3)
             render_sector_alerts(_sector_alerts)
 
             if not sigs:
@@ -2367,7 +2367,7 @@ def main():
                             "板块": _sn,
                             "ETF": _si["etf"],
                             "达标/扫描": f"{_pass}/{len(_hits)}",
-                            "触发": "🔥 是" if _pass >= 2 else ("—" if _hits else "未扫描"),
+                            "触发": "🔥 是" if _pass >= 3 else ("—" if _hits else "未扫描"),
                             "标的详情": "  ".join(_hits) if _hits else "—",
                         })
                     st.dataframe(
