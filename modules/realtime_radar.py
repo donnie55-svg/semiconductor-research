@@ -85,7 +85,7 @@ def _score_fundamentals(exp_score: Optional[float], fpe: Optional[float], peg: O
         else:
             score -= 10; reasons.append(f"预期指数偏弱({exp_score:.0f})")
     else:
-        score += 20  # 无数据给中性分
+        score += 30  # 无预期数据时给较高中性分，避免误杀
 
     # 2. EPS增长率（占25分）
     if eps_growth is not None:
@@ -439,11 +439,16 @@ def scan_signals(
             target     = val_data.get("Analyst Target")
             upside_pct = ((target - latest_price) / latest_price) if (target and latest_price > 0) else None
 
+            # val_cache为空时给eps_growth一个中性默认值，避免所有股票被过滤
+            if eps_growth is None and fpe is None and peg is None:
+                eps_growth = 0.15  # 默认假设15%增长，中性处理
+
             fund_score, fund_reasons = _score_fundamentals(
                 exp_score, fpe, peg, eps_growth, upside_pct
             )
 
             # 基本面低于40分直接跳过，不进入信号池
+            # 注：val_cache为空时eps_growth/fpe/peg全None，默认给中性分避免过滤
             if fund_score < 40:
                 continue
 
