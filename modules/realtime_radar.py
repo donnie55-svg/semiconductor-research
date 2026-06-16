@@ -132,14 +132,16 @@ def grade_signal(sig: dict, exp_score: Optional[float]) -> str:
     """
     Classify a signal into A+/A/B/C.
 
-    A+: exp>70  AND  RSI超卖+布林带下轨+3日急跌 全触发  AND  RR>1.5  AND  MA50>MA200
-    A:  exp>55  AND  ≥2条核心技术触发  AND  RR>1.2
+    A+: exp>55  AND  RSI超卖+布林带下轨 ≥2条核心触发  AND  RR>1.5  AND  MA50>MA200
+    A:  exp>40  AND  ≥2条核心技术触发  AND  RR>1.2
     B:  ≥1条触发  AND  RR>1.0
-    C:  有触发但 RR≤1.0 或 exp<40（仍显示，标注仅观察）
+    C:  有触发但 RR≤1.0（仍显示，标注仅观察）
+    exp为None时视为中性(50)，不阻断升级
     """
     triggered = sig.get("triggered", [])
     rr        = sig.get("rr_ratio") or 0.0
-    exp       = exp_score  # may be None
+    # exp为None时给默认值50，不阻断信号升级
+    exp       = exp_score if exp_score is not None else 50.0
 
     # Count the three core technical conditions
     tech3 = sum([
@@ -153,10 +155,10 @@ def grade_signal(sig: dict, exp_score: Optional[float]) -> str:
     ma200 = sig.get("ma200")
     trend_ok = (ma50 is not None and ma200 is not None and float(ma50) > float(ma200))
 
-    if exp is not None and exp > 70 and tech3 >= 3 and rr > 1.5 and trend_ok:
+    if exp > 55 and tech3 >= 2 and rr > 1.5 and trend_ok:
         return "A+"
 
-    if exp is not None and exp > 55 and tech3 >= 2 and rr > 1.2:
+    if exp > 40 and tech3 >= 2 and rr > 1.2:
         return "A"
 
     if len(triggered) >= 1 and rr > 1.0:
