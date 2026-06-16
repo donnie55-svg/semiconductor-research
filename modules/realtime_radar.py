@@ -252,28 +252,18 @@ def _score_risks(
     return int(min(50, risk)), risks
 
 
-def _signal_tier(n_triggered: int) -> Tuple[str, str]:
-    """根据触发条件数量返回 (tier_label, tier_emoji)。"""
-    if n_triggered >= 3:
-        return "强信号", "🔴"
-    elif n_triggered == 2:
-        return "中信号", "🟡"
-    else:
-        return "弱信号", "🟢"
+def _signal_tier(n: int):
+    if n >= 3: return "强信号", "🔴"
+    if n >= 2: return "中信号", "🟡"
+    return "弱信号", "🟢"
 
 
 def _stars(score: int) -> str:
-    """将综合分数转换为星级字符串。"""
-    if score >= 80:
-        return "⭐⭐⭐⭐⭐"
-    elif score >= 65:
-        return "⭐⭐⭐⭐"
-    elif score >= 50:
-        return "⭐⭐⭐"
-    elif score >= 35:
-        return "⭐⭐"
-    else:
-        return "⭐"
+    if score >= 80: return "★★★★★"
+    if score >= 65: return "★★★★☆"
+    if score >= 50: return "★★★☆☆"
+    if score >= 35: return "★★☆☆☆"
+    return "★☆☆☆☆"
 
 
 def grade_signal(sig: dict, exp_score: Optional[float]) -> str:
