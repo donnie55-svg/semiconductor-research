@@ -20,6 +20,7 @@ RADAR_TICKERS_BY_SECTOR: Dict[str, List[str]] = {
     "AI网络":           ["ANET","CSCO","LITE","COHR"],
     "核能/新能源":      ["CCJ","NNE","FSLR","VST"],
     "航天/国防":        ["RKLB","ASTS","LMT","RTX"],
+    "太空":             ["ASTS","RKLB","LUNR","PL","IRDM","BKSY"],
     "中概股":           ["BABA","PDD","JD","NIO","XPEV","LI"],
     "ETF":              ["SMH","SOXX","SPY","QQQ"],
     "医药/生物科技":    ["LLY","NVO","JNJ","MRK","ABBV","PFE","AMGN","GILD","MRNA"],
@@ -71,17 +72,18 @@ def _signal_strength(
     triggered = []
     score = 0
 
-    # RSI(5) < 35
-    if not np.isnan(rsi_val) and rsi_val < 35:
+    # RSI(5) < 45
+    if not np.isnan(rsi_val) and rsi_val < 45:
         triggered.append("RSI超卖")
         base = 25
         if rsi_val < 20: base += 10
         elif rsi_val < 25: base += 5
         elif rsi_val < 30: base += 2
+        elif rsi_val < 35: base += 1
         score += base
 
-    # 布林带距下轨5%以内（含跌破）
-    if not (np.isnan(close_val) or np.isnan(lower_val)) and close_val < lower_val * 1.05:
+    # 布林带距下轨8%以内（含跌破）
+    if not (np.isnan(close_val) or np.isnan(lower_val)) and close_val < lower_val * 1.08:
         triggered.append("布林带下轨")
         if close_val < lower_val:
             base = 25
@@ -92,13 +94,14 @@ def _signal_strength(
             base = 15  # 距下轨5%以内未跌破，信号稍弱
         score += base
 
-    # 3日跌幅 >5%
-    if not np.isnan(drop3_val) and drop3_val > 0.05:
+    # 3日跌幅 >3%
+    if not np.isnan(drop3_val) and drop3_val > 0.03:
         triggered.append("3日急跌")
         base = 25
         if drop3_val > 0.12: base += 10
         elif drop3_val > 0.08: base += 5
         elif drop3_val > 0.06: base += 2
+        elif drop3_val > 0.05: base += 1
         score += base
 
     # 成交量 >20日均量×1.5
@@ -152,10 +155,10 @@ def grade_signal(sig: dict, exp_score: Optional[float]) -> str:
     ma200 = sig.get("ma200")
     trend_ok = (ma50 is not None and ma200 is not None and float(ma50) > float(ma200))
 
-    if exp is not None and exp > 70 and tech3 >= 3 and rr > 1.5 and trend_ok:
+    if exp is not None and exp > 55 and tech3 >= 2 and rr > 1.5 and trend_ok:
         return "A+"
 
-    if exp is not None and exp > 55 and tech3 >= 2 and rr > 1.2:
+    if exp is not None and exp > 40 and tech3 >= 2 and rr > 1.2:
         return "A"
 
     if len(triggered) >= 1 and rr > 1.0:
