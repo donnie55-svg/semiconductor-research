@@ -25,6 +25,7 @@ from modules.realtime_radar import (
 from modules.earnings import get_earnings_summary, get_guidance_tracker, get_quarterly_revenue
 from modules.earnings_radar import SCAN_TICKERS, get_earnings_radar, get_top_picks
 from modules.futu_data import is_futu_connected
+from trading_advice import render_trading_advice_tab
 from modules.market_report import get_daily_summary, get_price_history, get_sox_beta
 from modules.news_monitor import KEYWORDS, fetch_news_feed
 from modules.supply_chain import get_adr_premium, get_hbm_manual_data, get_hyperscaler_capex
@@ -95,6 +96,39 @@ def c_expectation(tickers: tuple) -> dict:
         return {t: disk[t] for t in tickers if t in disk and _is_fresh(disk[t])}
     except Exception:
         return {}
+
+@st.cache_data(ttl=300)
+def c_quote_df(tickers: tuple) -> pd.DataFrame:
+    """实时行情 DataFrame，用于交易建议 tab（富途优先，yfinance 回退）。"""
+    if is_futu_connected():
+        from modules.futu_data import get_realtime_quote
+        df = get_realtime_quote(list(tickers))
+        if not df.empty:
+            if "PrevClose" in df.columns:
+                df = df.rename(columns={"PrevClose": "prev_close"})
+            return df
+    return c_daily(tickers)
+
+
+@st.cache_data(ttl=300)
+def c_kline_map(tickers: tuple) -> dict:
+    """K 线 dict {ticker: DataFrame}，用于交易建议 tab 的均线计算。"""
+    from modules.futu_data import get_kline
+    result = {}
+    for ticker in tickers:
+        try:
+            df = get_kline(ticker, "3mo")
+            if not df.empty:
+                result[ticker] = df
+                continue
+            import yfinance as yf
+            hist = yf.Ticker(ticker).history(period="3mo")
+            if not hist.empty:
+                result[ticker] = hist
+        except Exception:
+            pass
+    return result
+
 
 @st.cache_data(ttl=300)
 def c_spy_state():
@@ -506,6 +540,11 @@ def detect_sector_alerts(signals: list, min_score: int = 60, min_count: int = 3)
     where triggered_stocks is sorted descending by score.
     """
     score_map = {s["ticker"].upper().strip(): s["score"] for s in signals if s.get("score", 0) >= min_score}
+    print(f"[DEBUG detect_sector_alerts] score_map tickers ({len(score_map)}): {sorted(score_map.keys())}")
+    _space_stocks = SECTOR_ETF_MAP.get("太空", {}).get("stocks", [])
+    print(f"[DEBUG 太空板块] SECTOR_ETF_MAP stocks: {_space_stocks}")
+    print(f"[DEBUG 太空板块] 匹配到 score_map: {[t for t in _space_stocks if t in score_map]}")
+    print(f"[DEBUG 太空板块] 未匹配: {[t for t in _space_stocks if t not in score_map]}")
     trigger_time = datetime.now().strftime("%H:%M:%S")
     alerts = []
     for sector_name, info in SECTOR_ETF_MAP.items():
@@ -927,11 +966,11 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab_trade = st.tabs([
         "📊 市场概览", "💰 估值分析", "🔗 供应链追踪", "📈 财报分析",
         "📰 新闻监控", "📡 财报雷达", "🎯 策略回测", "📻 实时雷达",
         "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达", "📅 经济日历", "💼 持仓跟踪",
-        "📊 估值排行榜",
+        "📊 估值排行榜", "📈 交易建议",
     ])
 
     # ════════════════════════════════════════════════════════════════════════════
@@ -4271,6 +4310,40 @@ def main():
             _vrc5.metric("❌ 高估风险", sum(1 for r in st.session_state["vr_results"] if r["综合评分"] < 40))
         else:
             st.info("点击「开始扫描」获取 watchlist 所有股票的估值评分排行。")
+
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # TAB 15  交易建议
+    # ════════════════════════════════════════════════════════════════════════════
+    with tab_trade:
+        # 把雷达信号列表转为 signals_df（trading_advice 需要 ticker + signal_grade 列）
+        _raw_sigs = st.session_state.get("radar_signals", [])
+        # 防止 radar_signals 存的是 DataFrame 而非 list，导致 if _raw_sigs 触发 ambiguous truth value
+        if isinstance(_raw_sigs, pd.DataFrame):
+            _raw_sigs = _raw_sigs.to_dict("records")
+        if _raw_sigs and isinstance(_raw_sigs, list) and len(_raw_sigs) > 0:
+            sigs = pd.DataFrame(
+                [{"ticker": s["ticker"], "signal_grade": s.get("signal_level", "")} for s in _raw_sigs]
+            )
+        else:
+            sigs = pd.DataFrame(columns=["ticker", "signal_grade"])
+
+        # 需要行情 + K线的股票：信号股 + 默认持仓池 + 板块代理
+        _trade_tickers  = list(dict.fromkeys(
+            sigs["ticker"].tolist() + ["MU", "ETN", "NVDA", "AMD", "VRT"]
+        ))
+        _quote_tickers  = tuple(dict.fromkeys(_trade_tickers + ["SPY", "QQQ", "SMH", "SOXX"]))
+
+        with st.spinner("加载行情和K线..."):
+            quote_df  = c_quote_df(_quote_tickers)
+            kline_map = c_kline_map(tuple(_trade_tickers))
+
+        render_trading_advice_tab(
+            signals_df=sigs,
+            quote_df=quote_df,
+            kline_map=kline_map,
+            intraday_map=None,
+        )
 
 
 if __name__ == "__main__":
