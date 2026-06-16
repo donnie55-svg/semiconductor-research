@@ -72,18 +72,17 @@ def _signal_strength(
     triggered = []
     score = 0
 
-    # RSI(5) < 45
-    if not np.isnan(rsi_val) and rsi_val < 45:
+    # RSI(5) < 35
+    if not np.isnan(rsi_val) and rsi_val < 35:
         triggered.append("RSI超卖")
         base = 25
         if rsi_val < 20: base += 10
         elif rsi_val < 25: base += 5
         elif rsi_val < 30: base += 2
-        elif rsi_val < 35: base += 1
         score += base
 
-    # 布林带距下轨8%以内（含跌破）
-    if not (np.isnan(close_val) or np.isnan(lower_val)) and close_val < lower_val * 1.08:
+    # 布林带距下轨5%以内（含跌破）
+    if not (np.isnan(close_val) or np.isnan(lower_val)) and close_val < lower_val * 1.05:
         triggered.append("布林带下轨")
         if close_val < lower_val:
             base = 25
@@ -94,14 +93,13 @@ def _signal_strength(
             base = 15  # 距下轨5%以内未跌破，信号稍弱
         score += base
 
-    # 3日跌幅 >3%
-    if not np.isnan(drop3_val) and drop3_val > 0.03:
+    # 3日跌幅 >5%
+    if not np.isnan(drop3_val) and drop3_val > 0.05:
         triggered.append("3日急跌")
         base = 25
         if drop3_val > 0.12: base += 10
         elif drop3_val > 0.08: base += 5
         elif drop3_val > 0.06: base += 2
-        elif drop3_val > 0.05: base += 1
         score += base
 
     # 成交量 >20日均量×1.5
@@ -155,10 +153,10 @@ def grade_signal(sig: dict, exp_score: Optional[float]) -> str:
     ma200 = sig.get("ma200")
     trend_ok = (ma50 is not None and ma200 is not None and float(ma50) > float(ma200))
 
-    if exp is not None and exp > 55 and tech3 >= 2 and rr > 1.5 and trend_ok:
+    if exp is not None and exp > 70 and tech3 >= 3 and rr > 1.5 and trend_ok:
         return "A+"
 
-    if exp is not None and exp > 40 and tech3 >= 2 and rr > 1.2:
+    if exp is not None and exp > 55 and tech3 >= 2 and rr > 1.2:
         return "A"
 
     if len(triggered) >= 1 and rr > 1.0:
@@ -213,47 +211,59 @@ def scan_signals(
 
     signals: List[dict] = []
 
-    # Download recent data (need ~60 days for BB / 200MA calculation)
-    _extra = [t for t in ["SPY", "QQQ"] if t not in tickers]
-    raw = yf.download(
-        tickers + _extra,
-        period="1y",
-        auto_adjust=True,
-        progress=False,
-        threads=True,
-    )
+    # ── 数据源：富途优先，yfinance单股fallback ────────────────────────────────
+    try:
+        from modules.futu_data import get_kline, is_futu_connected
+        _futu_ok = is_futu_connected()
+    except Exception:
+        _futu_ok = False
 
-    # SPY / QQQ series for market condition checks
+    def _get_ohlcv(sym: str):
+        """返回 (close, low, volume) 三个 pd.Series，失败返回 None。"""
+        # 1. 富途优先
+        if _futu_ok:
+            try:
+                df = get_kline(sym, "1y")
+                if df is not None and not df.empty and len(df) >= 25:
+                    close  = df["Close"].dropna()
+                    low    = df["Low"].dropna()   if "Low"    in df.columns else pd.Series(dtype=float)
+                    volume = df["Volume"].dropna() if "Volume" in df.columns else pd.Series(dtype=float)
+                    if len(close) >= 25:
+                        return close, low, volume
+            except Exception:
+                pass
+        # 2. yfinance 单股fallback
+        try:
+            df = yf.Ticker(sym).history(period="1y", auto_adjust=True)
+            if df is not None and not df.empty and len(df) >= 25:
+                close  = df["Close"].dropna()
+                low    = df["Low"].dropna()   if "Low"    in df.columns else pd.Series(dtype=float)
+                volume = df["Volume"].dropna() if "Volume" in df.columns else pd.Series(dtype=float)
+                if len(close) >= 25:
+                    return close, low, volume
+        except Exception:
+            pass
+        return None
+
+    # SPY / QQQ for market state
     spy_close: Optional[pd.Series] = None
     qqq_close: Optional[pd.Series] = None
-    try:
-        if hasattr(raw.columns, "levels"):
-            lvl1 = raw.columns.get_level_values(1)
-            if "SPY" in lvl1:
-                spy_close = raw["Close"]["SPY"].dropna()
-            if "QQQ" in lvl1:
-                qqq_close = raw["Close"]["QQQ"].dropna()
-        elif not hasattr(raw.columns, "levels"):
-            spy_close = raw["Close"].dropna()
-    except Exception:
-        pass
+    _spy = _get_ohlcv("SPY")
+    if _spy:
+        spy_close = _spy[0]
+    _qqq = _get_ohlcv("QQQ")
+    if _qqq:
+        qqq_close = _qqq[0]
 
     mkt_state = _market_state_from_spy(spy_close)
     vix_val   = _get_vix_level()
 
     for ticker in tickers:
         try:
-            # Extract OHLCV
-            if hasattr(raw.columns, "levels"):
-                lvl1 = raw.columns.get_level_values(1)
-                if ticker not in lvl1: continue
-                close  = raw["Close"][ticker].dropna()
-                low    = raw["Low"][ticker].dropna()   if "Low"    in raw.columns.get_level_values(0) else pd.Series(dtype=float)
-                volume = raw["Volume"][ticker].dropna() if "Volume" in raw.columns.get_level_values(0) else pd.Series(dtype=float)
-            else:
-                close  = raw["Close"].dropna()
-                low    = raw["Low"].dropna()   if "Low"    in raw.columns else pd.Series(dtype=float)
-                volume = raw["Volume"].dropna() if "Volume" in raw.columns else pd.Series(dtype=float)
+            ohlcv = _get_ohlcv(ticker)
+            if ohlcv is None:
+                continue
+            close, low, volume = ohlcv
 
             if len(close) < 25: continue
 
