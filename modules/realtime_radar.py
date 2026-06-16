@@ -165,14 +165,23 @@ def _score_technical_timing(
     # 适合：趋势向上，短期回调到均线附近企稳
     if has_ma20 and has_ma50:
         above_ma50 = price > ma50_val
-        near_ma20  = abs(price - ma20_val) / ma20_val < 0.03  # 距MA20在3%以内
-        bouncing   = not np.isnan(rsi_val) and 40 <= rsi_val <= 60  # RSI回调到中性区
+        above_ma20 = price > ma20_val
+        near_ma20  = abs(price - ma20_val) / ma20_val < 0.05  # 距MA20在5%以内（放宽）
+        near_ma50  = abs(price - ma50_val) / ma50_val < 0.05  # 距MA50在5%以内
+        rsi_ok     = not np.isnan(rsi_val) and 35 <= rsi_val <= 70  # RSI范围放宽
 
-        if above_ma50 and near_ma20 and bouncing:
+        if above_ma50 and near_ma20 and rsi_ok:
             score += 50; triggered.append("回踩MA20企稳")
             scenario = "回踩支撑"
-        elif above_ma50 and near_ma20:
-            score += 35; triggered.append("价格在MA20附近")
+        elif above_ma50 and near_ma50 and rsi_ok:
+            score += 40; triggered.append("回踩MA50企稳")
+            scenario = "回踩支撑"
+        elif above_ma20 and above_ma50:
+            # 站稳双均线，趋势良好
+            score += 25; triggered.append("站稳均线")
+            scenario = "趋势持有"
+        elif near_ma20 or near_ma50:
+            score += 20; triggered.append("均线附近")
             scenario = "回踩支撑"
 
     # ── 场景2：放量突破买点 ─────────────────────────────────────────────────
@@ -188,16 +197,16 @@ def _score_technical_timing(
     if not np.isnan(rsi_val) and rsi_val < 40 and drop3_val > 0.05:
         score += 40; triggered.append("恐慌错杀")
         scenario = "错杀低吸"
-    elif not np.isnan(rsi_val) and rsi_val < 35:
-        score += 30; triggered.append("RSI深度超卖")
+    elif not np.isnan(rsi_val) and rsi_val < 40:
+        score += 25; triggered.append("RSI超卖")
         scenario = "错杀低吸"
 
     # ── 加分项 ──────────────────────────────────────────────────────────────
-    # 布林带下轨支撑（仅当价格在下轨附近且RSI未过低）
-    if not np.isnan(lower_val) and price < lower_val * 1.05 and not np.isnan(rsi_val) and rsi_val > 25:
+    # 布林带下轨支撑
+    if not np.isnan(lower_val) and price < lower_val * 1.08:
         score += 15; triggered.append("布林下轨支撑")
 
-    # 放量（单独加分）
+    # 放量
     if not np.isnan(vol_ratio_val) and vol_ratio_val > 2.0:
         score += 15; triggered.append("显著放量")
     elif not np.isnan(vol_ratio_val) and vol_ratio_val > 1.5:
@@ -207,8 +216,8 @@ def _score_technical_timing(
     if has_ma50 and has_ma200 and ma50_val > ma200_val:
         score += 10; triggered.append("长期趋势向上")
 
-    # 短期动能（3日跌幅适中，不是崩盘式下跌）
-    if 0.03 < drop3_val < 0.08:
+    # 短期回调适度
+    if 0.02 < drop3_val < 0.10:
         score += 8; triggered.append("短期回调适度")
 
     return int(max(0, min(100, score))), triggered, scenario
@@ -446,8 +455,8 @@ def scan_signals(
                 mkt_state.get("state", "unknown"),
             )
 
-            # 技术面低于20分不产生信号
-            if tech_score < 20:
+            # 技术面低于10分不产生信号
+            if tech_score < 10:
                 continue
 
             # ── 风险评分 ──────────────────────────────────────────────────────
