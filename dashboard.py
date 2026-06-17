@@ -859,6 +859,20 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
+        # ── 预期指数刷新按钮 ──────────────────────────────────────────────────
+        if st.button("📊 刷新预期指数", use_container_width=True,
+                     help="重新计算所有股票的预期指数（EPS修正+评级+目标价+新闻），约需2-3分钟"):
+            from modules.expectation_index import get_expectation_scores
+            _all_tks = all_tickers if all_tickers else []
+            if _all_tks:
+                with st.spinner(f"正在刷新 {len(_all_tks)} 只股票预期指数，约需2-3分钟..."):
+                    _exp_result = get_expectation_scores(_all_tks, force_refresh=True)
+                c_expectation.clear()
+                _valid = sum(1 for v in _exp_result.values() if v.get("score", 50) != 50)
+                st.success(f"✅ 刷新完成！{len(_exp_result)} 只股票，有效数据 {_valid} 只，缓存6小时。")
+            else:
+                st.warning("未找到watchlist股票")
+
         # 板块下拉选择器，默认 AI算力/GPU/芯片
         default_idx = sector_options.index(_DEFAULT_SECTOR) if _DEFAULT_SECTOR in sector_options else 0
         selected_sector = st.selectbox("板块选择", sector_options, index=default_idx)
