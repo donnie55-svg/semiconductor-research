@@ -228,8 +228,16 @@ def _score_risks(
     drop3_val: float,
     change_1d: float,
     eps_growth: Optional[float],
+    insider_signal: Optional[str] = None,
 ) -> Tuple[int, List[str]]:
-    """风险扣分项，返回 (risk_score, risk_labels)，risk_score越高风险越大。"""
+    """
+    风险扣分项，返回 (risk_score, risk_labels)，risk_score越高风险越大。
+
+    insider_signal: 来自 modules/insider_data.py 的内幕交易信号（SEC Form 4）。
+      - "heavy_sell" : C-suite密集净卖出、无买入对冲 → 扣分
+      - "ceo_buy"    : C-suite有净买入 → 不扣分（占位，暂不加分，避免双重计分）
+      - None         : 无数据或中性，不参与评分
+    """
     risk = 0
     risks = []
 
@@ -249,21 +257,11 @@ def _score_risks(
     if eps_growth is not None and eps_growth < 0:
         risk += 15; risks.append("EPS负增长")
 
+    if insider_signal == "heavy_sell":
+        risk += 15; risks.append("内幕密集卖出⚠️")
+    # insider_signal == "ceo_buy" 暂不加分，先占位，避免双重计分（exp_score里可能已含管理层信心维度）
+
     return int(min(50, risk)), risks
-
-
-def _signal_tier(n: int):
-    if n >= 3: return "强信号", "🔴"
-    if n >= 2: return "中信号", "🟡"
-    return "弱信号", "🟢"
-
-
-def _stars(score: int) -> str:
-    if score >= 80: return "★★★★★"
-    if score >= 65: return "★★★★☆"
-    if score >= 50: return "★★★☆☆"
-    if score >= 35: return "★★☆☆☆"
-    return "★☆☆☆☆"
 
 
 def grade_signal(sig: dict, exp_score: Optional[float]) -> str:
@@ -478,9 +476,17 @@ def scan_signals(
             if tech_score < 10:
                 continue
 
+            # ── 内幕交易信号（SEC Form 4，带本地缓存，正常情况下很快）──────────────
+            insider_signal = None
+            try:
+                from modules.insider_data import get_insider_signal
+                insider_signal, _insider_detail = get_insider_signal(ticker)
+            except Exception:
+                pass
+
             # ── 风险评分 ──────────────────────────────────────────────────────
             risk_score, risk_reasons = _score_risks(
-                vix_val, latest_drop3, latest_1d_chg, eps_growth
+                vix_val, latest_drop3, latest_1d_chg, eps_growth, insider_signal
             )
 
             # ── 综合评分 ──────────────────────────────────────────────────────
@@ -552,6 +558,7 @@ def scan_signals(
                 "strategy":           scenario,
                 "fund_reasons":       fund_reasons,
                 "risk_reasons":       risk_reasons,
+                "insider_signal":     insider_signal,
                 # 估值字段（用于UI显示）
                 "fpe":                fpe,
                 "peg":                peg,
