@@ -264,6 +264,20 @@ def _score_risks(
     return int(min(50, risk)), risks
 
 
+def _signal_tier(n: int):
+    if n >= 3: return "强信号", "🔴"
+    if n >= 2: return "中信号", "🟡"
+    return "弱信号", "🟢"
+
+
+def _stars(score: int) -> str:
+    if score >= 80: return "★★★★★"
+    if score >= 65: return "★★★★☆"
+    if score >= 50: return "★★★☆☆"
+    if score >= 35: return "★★☆☆☆"
+    return "★☆☆☆☆"
+
+
 def grade_signal(sig: dict, exp_score: Optional[float]) -> str:
     """
     新版信号分级：基本面门槛 + 技术面买点 + 风险过滤。
