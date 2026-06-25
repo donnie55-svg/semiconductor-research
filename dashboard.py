@@ -3659,44 +3659,81 @@ def main():
                 _n = len(_pairs)
                 _prog = st.progress(0, text=f"开始扫描 {_n} 只股票...")
                 _rows = []
+                _failed_tickers = []
+                _consecutive_limited = 0
 
                 for _i, (_tk, _sec) in enumerate(_pairs):
                     _prog.progress((_i + 1) / _n, text=f"扫描 {_tk}... ({_i + 1}/{_n})")
-                    try:
-                        _info = _yf.Ticker(_tk).info
-                        _pm = _info.get("preMarketPrice")
-                        _pc = _info.get("previousClose")
-                        if _pm is None or _pc is None or _pc == 0:
-                            _time.sleep(0.1)
-                            continue
-                        _chg = (_pm - _pc) / _pc * 100
+
+                    # ── 重试拉取 .info（初次 + 最多2次重试）────────────────────
+                    _info = {}
+                    _rate_limited = False
+                    for _attempt in range(3):
                         try:
-                            _news = _yf.Ticker(_tk).news
-                            _headline = _news[0].get("content", {}).get("title") or _news[0].get("title", "—") if _news else "—"
+                            _info = _yf.Ticker(_tk).info or {}
                         except Exception:
-                            _headline = "—"
-                        _rows.append({
-                            "ticker":        _tk,
-                            "sector":        _sec,
-                            "prev_close":    _pc,
-                            "pm_price":      _pm,
-                            "pm_change_pct": round(_chg, 2),
-                            "pm_volume":     _info.get("preMarketVolume"),
-                            "news_title":    _headline,
-                        })
+                            _info = {}
+                        if _info.get("previousClose"):   # 有效响应：基础字段存在
+                            _rate_limited = False
+                            break
+                        # 空dict / 缺基础字段 → 疑似429限速
+                        _rate_limited = True
+                        if _attempt == 0:
+                            _time.sleep(1.5)
+                        elif _attempt == 1:
+                            _time.sleep(3.0)
+                        # attempt == 2: 三次均失败，放弃
+
+                    if _rate_limited:
+                        _failed_tickers.append(_tk)
+                        _consecutive_limited += 1
+                        if _consecutive_limited >= 10:   # 连续10只被限速，整体暂停5秒
+                            _time.sleep(5)
+                            _consecutive_limited = 0
+                        continue
+
+                    _consecutive_limited = 0             # 成功响应，重置连续限速计数
+
+                    _pm = _info.get("preMarketPrice")
+                    _pc = _info.get("previousClose")
+                    if _pm is None or _pc is None or _pc == 0:
+                        continue                         # 该股票本来就没有盘前报价，正常跳过
+
+                    _chg = (_pm - _pc) / _pc * 100
+                    try:
+                        _news = _yf.Ticker(_tk).news
+                        _headline = (
+                            _news[0].get("content", {}).get("title")
+                            or _news[0].get("title", "—")
+                            if _news else "—"
+                        )
                     except Exception:
-                        pass
-                    _time.sleep(0.1)
+                        _headline = "—"
+                    _rows.append({
+                        "ticker":        _tk,
+                        "sector":        _sec,
+                        "prev_close":    _pc,
+                        "pm_price":      _pm,
+                        "pm_change_pct": round(_chg, 2),
+                        "pm_volume":     _info.get("preMarketVolume"),
+                        "news_title":    _headline,
+                    })
 
                 _prog.empty()
                 st.session_state["_pm_rows"]    = _rows
+                st.session_state["_pm_failed"]  = _failed_tickers
                 st.session_state["_pm_scan_at"] = _now
                 _t_str = _now.strftime("%H:%M")
-                st.success(f"✅ 扫描完成，共 {len(_rows)} 只股票有盘前数据，时间：{_t_str}")
+                st.success(f"✅ 扫描完成，共 {len(_rows)} 只股票有盘前数据，时间：{_t_str} (CST)")
+                if _failed_tickers:
+                    st.warning(f"⚠️ {len(_failed_tickers)} 只因限速未能获取数据：{', '.join(_failed_tickers)}")
 
         # ── Display ────────────────────────────────────────────────────────────
         _pm_rows = st.session_state.get("_pm_rows")
         if _pm_rows is not None:
+            _pm_failed = st.session_state.get("_pm_failed", [])
+            if _pm_failed:
+                st.warning(f"⚠️ {len(_pm_failed)} 只因限速未能获取数据：{', '.join(_pm_failed)}")
             if not _pm_rows:
                 st.info("暂无盘前数据（可能不在盘前交易时段 04:00–09:30 ET，或所有股票均无盘前报价）")
             else:
