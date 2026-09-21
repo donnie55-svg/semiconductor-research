@@ -980,10 +980,10 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab_trade = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab_night, tab12, tab13, tab14, tab_trade = st.tabs([
         "📊 市场概览", "💰 估值分析", "🔗 供应链追踪", "📈 财报分析",
         "📰 新闻监控", "📡 财报雷达", "🎯 策略回测", "📻 实时雷达",
-        "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达", "📅 经济日历", "💼 持仓跟踪",
+        "🎯 历史验证", "🔎 单股查询", "🌅 盘前雷达", "🌙 夜盘雷达", "📅 经济日历", "💼 持仓跟踪",
         "📊 估值排行榜", "📈 交易建议",
     ])
 
@@ -3802,6 +3802,74 @@ def main():
     # ════════════════════════════════════════════════════════════════════════════
     # TAB 12  经济日历
     # ════════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════════
+    # 夜盘雷达（美股盘后）
+    # ════════════════════════════════════════════════════════════════════════════
+    with tab_night:
+        st.header("🌙 夜盘雷达")
+        st.caption("扫描 watchlist 的美股盘后报价（通常在 16:00–20:00 ET 有数据），相对昨收排序。")
+
+        if st.button("🔄 扫描夜盘异动", type="primary", key="_night_scan"):
+            import time as _time
+            import yfinance as _yf
+
+            _rows, _failed = [], []
+            _pairs = [(r["ticker"], r["sector"]) for _, r in wl.iterrows()]
+            _progress = st.progress(0, text="正在获取盘后报价...")
+            for _i, (_ticker, _sector) in enumerate(_pairs, start=1):
+                try:
+                    _info = _yf.Ticker(_ticker).info
+                    _post_price = _info.get("postMarketPrice")
+                    _prev_close = _info.get("previousClose")
+                    if _post_price is not None and _prev_close not in (None, 0):
+                        _rows.append({
+                            "ticker": _ticker,
+                            "sector": _sector,
+                            "prev_close": _prev_close,
+                            "post_price": _post_price,
+                            "post_change_pct": round((_post_price - _prev_close) / _prev_close * 100, 2),
+                            "post_volume": _info.get("postMarketVolume"),
+                        })
+                except Exception:
+                    _failed.append(_ticker)
+                _progress.progress(_i / len(_pairs), text=f"正在扫描 {_ticker}（{_i}/{len(_pairs)}）")
+                _time.sleep(0.15)
+
+            _progress.empty()
+            st.session_state["_night_rows"] = _rows
+            st.session_state["_night_failed"] = _failed
+            st.session_state["_night_scan_at"] = datetime.now()
+            st.success(f"扫描完成：{len(_rows)} 只股票有夜盘报价。")
+
+        _night_rows = st.session_state.get("_night_rows")
+        if _night_rows is None:
+            st.info("点击“扫描夜盘异动”开始扫描。非盘后时段时，可能没有可用报价。")
+        elif not _night_rows:
+            st.info("暂无夜盘数据：可能不在美股盘后时段，或数据源暂未提供盘后报价。")
+        else:
+            _night_df = pd.DataFrame(_night_rows).sort_values("post_change_pct", ascending=False).reset_index(drop=True)
+            _night_up = _night_df.loc[_night_df["post_change_pct"] > 2, "ticker"].tolist()
+            _night_down = _night_df.loc[_night_df["post_change_pct"] < -2, "ticker"].tolist()
+            _night_c1, _night_c2 = st.columns(2)
+            _night_c1.success(f"🟢 涨幅超过 2%：{', '.join(_night_up) if _night_up else '暂无'}")
+            _night_c2.error(f"🔴 跌幅超过 2%：{', '.join(_night_down) if _night_down else '暂无'}")
+
+            _night_display = _night_df.rename(columns={
+                "ticker": "股票代码", "sector": "所属板块", "prev_close": "昨收价",
+                "post_price": "夜盘价", "post_change_pct": "涨跌幅%", "post_volume": "夜盘成交量",
+            })
+            st.dataframe(
+                _night_display.style.format({
+                    "昨收价": "${:.2f}", "夜盘价": "${:.2f}", "涨跌幅%": "{:+.2f}%", "夜盘成交量": "{:,.0f}",
+                }, na_rep="N/A"),
+                use_container_width=True,
+                hide_index=True,
+            )
+            _night_failed = st.session_state.get("_night_failed", [])
+            if _night_failed:
+                st.warning(f"{len(_night_failed)} 只股票未能获取数据：{', '.join(_night_failed)}")
+
+
     with tab12:
         st.header("📅 经济日历")
         st.info(
